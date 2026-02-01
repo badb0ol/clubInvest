@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, ResponsiveContainer, YAxis, Tooltip, XAxis, CartesianGrid } from 'recharts';
 import { Club, Member, Asset, Transaction, NavEntry, PortfolioSummary } from './types';
@@ -19,8 +18,8 @@ const AVAILABLE_BANKS = [
 ];
 
 type TimeRange = '1J' | '1S' | '1M' | '1A' | 'MAX';
-type ViewState = 'dashboard' | 'portfolio' | 'members' | 'journal' | 'admin';
-
+//
+type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' | 'members' | 'journal' | 'admin';
 // --- SUB-COMPONENTS ---
 
 // 1. AUTH SCREEN
@@ -243,7 +242,7 @@ export default function App() {
   const [assetPrices, setAssetPrices] = useState<Record<string, number>>({});
   
   // UI State
-  const [view, setView] = useState<ViewState>('dashboard');
+  const [view, setView] = useState<ViewState>('landing');
   const [darkMode, setDarkMode] = useState(true); 
   const [modal, setModal] = useState<{ type: string | null }>({ type: null });
   const [tradeType, setTradeType] = useState<'BUY' | 'SELL'>('BUY');
@@ -574,9 +573,43 @@ export default function App() {
     </div>
   );
 
-  // 4. Authenticated, No Club Found -> Show Onboarding
-  if (!activeClub) return <OnboardingScreen user={session.user} onClubJoined={() => fetchClubContext(session.user.id)} />;
+  //
+    // 4. ÉCRAN D'ACCUEIL (Landing Page - Design Apple Dark)
+    if (view === 'landing') {
+    return (
+        <div className="h-screen bg-black flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-700">
+        <div className="w-24 h-24 bg-white rounded-full mb-10 flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.1)]">
+            <Icon name="pie" className="w-10 h-10 text-black" />
+        </div>
+        <h1 className="text-6xl md:text-8xl font-black text-white tracking-tighter mb-6">
+            ClubInvest
+        </h1>
+        <p className="text-gray-400 max-w-sm mb-12 text-lg leading-relaxed">
+            Le système d'exploitation minimaliste pour les clubs d'investissement modernes.
+            <br/><span className="text-gray-600 text-sm">Suivez la performance. Gérez les membres. Calculez la Quote-part.</span>
+        </p>
+        <button 
+            onClick={() => setView(session ? 'dashboard' : 'auth')}
+            className="bg-white text-black px-12 py-4 rounded-full font-bold text-lg hover:scale-105 transition-transform flex items-center gap-3"
+        >
+            Lancer l'App <span className="text-xl">→</span>
+        </button>
+        </div>
+    );
+    }
 
+    // 5. ÉCRAN DE CONNEXION (Stylisé)
+    if (view === 'auth' && !session) {
+    return (
+        <div className="h-screen bg-black flex flex-col items-center justify-center p-6">
+        <AuthScreen onAuthSuccess={() => setView('onboarding')} />
+        <button onClick={() => setView('landing')} className="mt-8 text-gray-500 hover:text-white transition-colors">Retour à l'accueil</button>
+        </div>
+    );
+    }
+
+    // 6. Authenticated, No Club Found -> Show Onboarding
+    if (!activeClub) return <OnboardingScreen user={session.user} onClubJoined={() => fetchClubContext(session.user.id)} />;
   // 5. Authenticated & Member -> Show Dashboard (Strict Mode)
   // Sidebar & Menu Logic included in return below
 
