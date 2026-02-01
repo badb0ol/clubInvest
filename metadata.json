@@ -1,0 +1,5 @@
+{
+  "name": "ClubInvest",
+  "description": "Multi-tenant investment club SaaS. Create clubs, invite friends via code, and manage shared portfolios with professional financial logic.",
+  "requestFramePermissions": []
+}
