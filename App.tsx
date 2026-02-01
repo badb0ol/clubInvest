@@ -182,25 +182,26 @@ const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ u
         setIsLoading(true);
         try {
             const { data: club, error } = await supabase.from('clubs').select('*').eq('invite_code', joinCode).single();
-            if (error || !club) throw new Error("Code invalide");
+            if (error || !club) throw new Error("Code invalide ou club inexistant");
 
-            // Safe Insert: Upsert with ignoreDuplicates to handle "already member" cases gracefully
-            const { error: joinError } = await supabase.from('club_members').upsert({
-                club_id: club.id,
-                user_id: user.id,
-                role: 'member'
-            }, { onConflict: 'club_id, user_id', ignoreDuplicates: true });
+            const { error: joinError } = await supabase.from('club_members').insert({
+            club_id: club.id,
+            user_id: user.id,
+            role: 'member'
+        });
 
-            if (joinError) throw joinError;
-
-            onClubJoined();
-        } catch (e: any) {
-            console.error(e);
-            alert(e.message);
-        } finally {
-            setIsLoading(false);
+        if (joinError) {
+            if (joinError.code === '23505') throw new Error("Vous êtes déjà membre de ce club !");
+            throw joinError;
         }
-    };
+
+        onClubJoined();
+    } catch (e: any) {
+        alert(e.message);
+    } finally {
+        setIsLoading(false);
+    }
+};
 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 dark:bg-black p-6 transition-colors duration-500">
@@ -421,14 +422,14 @@ export default function App() {
 
   // --- HANDLERS ---
   
-  const handleManualAddMember = async (name: string, email: string) => {
+{/*  const handleManualAddMember = async (name: string, email: string) => {
     if (!activeClub) return;
     const fakeId = crypto.randomUUID(); 
     await supabase.from('profiles').insert({ id: fakeId, full_name: name, email: email });
     await supabase.from('club_members').insert({ club_id: activeClub.id, user_id: fakeId, role: 'member' });
     await loadClubData(activeClub.id);
     setModal({ type: null });
-  };
+  }; */}
 
 const handleDeposit = async (memberId: string, amountStr: string) => {
     if (!activeClub || !session) return;
@@ -1089,7 +1090,7 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
             </div>
         </main>
 
-        {/* MODALS */}
+        {/* MODALS 
         {modal.type === 'addMember' && (
             <Modal isOpen={true} onClose={() => setModal({type:null})} title="Ajouter Membre">
                 <div className="space-y-4">
@@ -1102,7 +1103,7 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
                     }}>Ajouter</Button>
                 </div>
             </Modal>
-        )}
+        )}*/}
 
         {modal.type === 'deposit' && (
             <Modal isOpen={true} onClose={() => setModal({type:null})} title="Dépôt">
