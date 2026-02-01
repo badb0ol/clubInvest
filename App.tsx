@@ -141,7 +141,7 @@ const AuthScreen: React.FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess }) 
     );
 };
 
-// 2. ONBOARDING SCREEN (Modifié avec le bouton "Rejoindre mon club")
+// 2. ONBOARDING SCREEN (Version Finale et Sécurisée)
 const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ user, onClubJoined }) => {
     const [newClubName, setNewClubName] = useState('');
     const [joinCode, setJoinCode] = useState('');
@@ -173,10 +173,24 @@ const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ u
         checkExistingMembership();
     }, [user.id]);
 
+    // --- LE FILET DE SÉCURITÉ (INDISPENSABLE APRÈS UN RESET) ---
+    const ensureProfileExists = async () => {
+        const { error } = await supabase.from('profiles').upsert({
+            id: user.id,
+            email: user.email,
+            full_name: user.email?.split('@')[0] || 'Investisseur'
+        }, { onConflict: 'id' });
+        
+        if (error) console.error("Erreur auto-création profil:", error);
+    };
+    // ------------------------------------------------------------
+
     const handleCreate = async () => {
         if (!newClubName) return;
         setIsLoading(true);
         try {
+            await ensureProfileExists(); // <--- ON L'APPELLE ICI
+
             const inviteCode = generateInviteCode();
             const { data: club, error: clubError } = await supabase.from('clubs').insert({
                 name: newClubName,
@@ -203,6 +217,8 @@ const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ u
         if (!joinCode) return;
         setIsLoading(true);
         try {
+            await ensureProfileExists(); // <--- ET ICI
+
             // .toUpperCase() pour éviter les erreurs de casse
             const { data: club, error } = await supabase
                 .from('clubs')
