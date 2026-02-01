@@ -141,39 +141,41 @@ const AuthScreen: React.FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess }) 
     );
 };
 
-// 2. ONBOARDING SCREEN (Version Finale et Sécurisée)
+// 2. ONBOARDING SCREEN (Logique : Priorité Absolue au Club Existant)
 const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ user, onClubJoined }) => {
     const [newClubName, setNewClubName] = useState('');
     const [joinCode, setJoinCode] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     
-    // Nouvel état pour stocker le club existant si trouvé
+    // État initial de chargement pour éviter le "flash" des formulaires
+    const [isChecking, setIsChecking] = useState(true);
     const [existingClub, setExistingClub] = useState<any | null>(null);
 
-    // Vérification automatique au chargement
+    // 1. DÉTECTION PRIORITAIRE
     useEffect(() => {
-        const checkExistingMembership = async () => {
+        const check = async () => {
+            setIsChecking(true);
             try {
-                // On cherche si l'user a déjà une ligne dans club_members
-                const { data, error } = await supabase
+                // On demande le club ET ses infos
+                const { data } = await supabase
                     .from('club_members')
                     .select('*, clubs(*)')
                     .eq('user_id', user.id)
-                    .maybeSingle(); // maybeSingle évite les erreurs si 0 résultat
+                    .maybeSingle();
 
                 if (data && data.clubs) {
-                    console.log("Club trouvé :", data.clubs.name);
                     setExistingClub(data.clubs);
                 }
             } catch (e) {
-                console.error("Erreur vérification club:", e);
+                console.error("Erreur check:", e);
+            } finally {
+                setIsChecking(false);
             }
         };
-        
-        checkExistingMembership();
+        check();
     }, [user.id]);
 
-    // --- LE FILET DE SÉCURITÉ (INDISPENSABLE APRÈS UN RESET) ---
+    // 2. TA FONCTION DE SÉCURITÉ (Conservée précieusement)
     const ensureProfileExists = async () => {
         const { error } = await supabase.from('profiles').upsert({
             id: user.id,
@@ -183,125 +185,99 @@ const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ u
         
         if (error) console.error("Erreur auto-création profil:", error);
     };
-    // ------------------------------------------------------------
 
     const handleCreate = async () => {
         if (!newClubName) return;
         setIsLoading(true);
         try {
-            await ensureProfileExists(); // <--- ON L'APPELLE ICI
-
+            await ensureProfileExists(); // <-- Toujours là
             const inviteCode = generateInviteCode();
-            const { data: club, error: clubError } = await supabase.from('clubs').insert({
-                name: newClubName,
-                invite_code: inviteCode,
-            }).select().single();
-            if (clubError) throw clubError;
-
-            const { error: memberError } = await supabase.from('club_members').insert({
-                club_id: club.id,
-                user_id: user.id,
-                role: 'admin',
-            });
-            
-            if (memberError) throw memberError;
+            const { data: club, error: ce } = await supabase.from('clubs').insert({ name: newClubName, invite_code: inviteCode }).select().single();
+            if (ce) throw ce;
+            const { error: me } = await supabase.from('club_members').insert({ club_id: club.id, user_id: user.id, role: 'admin' });
+            if (me) throw me;
             onClubJoined();
-        } catch (e: any) {
-            alert("Erreur: " + e.message);
-        } finally {
-            setIsLoading(false);
-        }
+        } catch (e: any) { alert(e.message); } finally { setIsLoading(false); }
     };
 
     const handleJoin = async () => {
         if (!joinCode) return;
         setIsLoading(true);
         try {
-            await ensureProfileExists(); // <--- ET ICI
-
-            // .toUpperCase() pour éviter les erreurs de casse
-            const { data: club, error } = await supabase
-                .from('clubs')
-                .select('*')
-                .eq('invite_code', joinCode.toUpperCase())
-                .single();
-            
+            await ensureProfileExists(); // <-- Toujours là
+            const { data: club, error } = await supabase.from('clubs').select('*').eq('invite_code', joinCode.toUpperCase()).single();
             if (error || !club) throw new Error("Code invalide");
-
-            const { error: joinError } = await supabase.from('club_members').insert({
-                club_id: club.id,
-                user_id: user.id,
-                role: 'member'
-            });
-
-            if (joinError) {
-                // Si déjà membre, on redirige quand même !
-                if (joinError.code === '23505') {
-                    alert("Vous êtes déjà membre ! Redirection...");
-                    onClubJoined();
-                    return;
-                }
-                throw joinError;
-            }
-
+            const { error: je } = await supabase.from('club_members').insert({ club_id: club.id, user_id: user.id, role: 'member' });
+            if (je && je.code !== '23505') throw je;
             onClubJoined();
-        } catch (e: any) {
-            alert(e.message);
-        } finally {
-            setIsLoading(false);
-        }
+        } catch (e: any) { alert(e.message); } finally { setIsLoading(false); }
     };
 
+    // --- RENDU CONDITIONNEL STRICT ---
+
+    // Cas 1 : On vérifie encore la base de données (petit loader)
+    if (isChecking) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-black">
+                <div className="animate-pulse text-emerald-600 font-medium">Recherche de votre club...</div>
+            </div>
+        );
+    }
+
+    // Cas 2 : UN CLUB EST TROUVÉ -> ON BLOQUE TOUT LE RESTE
+    // On n'affiche QUE le panneau de retour, impossible de créer/joindre ailleurs
+    if (existingClub) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 dark:bg-black p-6">
+                <div className="absolute top-8 left-8">
+                     <button onClick={() => supabase.auth.signOut()} className="text-gray-500 hover:text-black dark:hover:text-white transition-colors">← Déconnexion</button>
+                </div>
+                
+                <Card className="max-w-md w-full p-8 text-center space-y-6 border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-900/10 animate-in zoom-in-95 duration-300">
+                    <div className="mx-auto w-16 h-16 bg-emerald-100 dark:bg-emerald-800 rounded-full flex items-center justify-center text-3xl mb-4">
+                        🏠
+                    </div>
+                    <div>
+                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Bon retour !</h2>
+                        <p className="text-slate-600 dark:text-slate-400">
+                            Vous êtes membre du club <span className="font-bold text-emerald-600 dark:text-emerald-400">{existingClub.name}</span>.
+                        </p>
+                        <p className="text-xs text-gray-400 mt-4">(La législation limite à un seul club par investisseur)</p>
+                    </div>
+                    
+                    <Button 
+                        onClick={onClubJoined} 
+                        className="w-full py-6 text-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl shadow-emerald-900/20 transition-transform active:scale-95"
+                    >
+                        Accéder au Dashboard →
+                    </Button>
+                </Card>
+            </div>
+        );
+    }
+
+    // Cas 3 : PAS DE CLUB -> ON AFFICHE LES FORMULAIRES CLASSIQUES
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 dark:bg-black p-6 transition-colors duration-500">
+        <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 dark:bg-black p-6">
             <div className="absolute top-8 left-8">
-                <button 
-                    onClick={() => supabase.auth.signOut()} 
-                    className="text-gray-500 hover:text-slate-900 dark:hover:text-white flex items-center gap-2 transition-all font-medium"
-                >
-                    <span>←</span> Déconnexion
-                </button>
+                <button onClick={() => supabase.auth.signOut()} className="text-gray-500 hover:text-black dark:hover:text-white transition-colors">← Déconnexion</button>
             </div>
 
             <div className="text-center mb-8">
-                <p className="text-gray-500 text-sm uppercase tracking-widest mb-2">Compte actif</p>
-                <p className="text-xl font-medium text-slate-900 dark:text-white">{user?.email}</p>
+                <p className="text-gray-500 text-sm uppercase tracking-widest mb-2">Bienvenue</p>
+                <p className="text-xl font-bold dark:text-white">{user?.email}</p>
             </div>
 
-            {/* --- LE BOUTON MAGIQUE SI CLUB TROUVÉ --- */}
-            {existingClub && (
-                <div className="w-full max-w-4xl mb-8 animate-in slide-in-from-top-4 duration-500">
-                    <Card className="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 p-6 flex flex-col md:flex-row items-center justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                            <div className="p-3 bg-emerald-100 dark:bg-emerald-800 rounded-full text-2xl">🏠</div>
-                            <div className="text-left">
-                                <h3 className="font-bold text-emerald-900 dark:text-emerald-100 text-lg">Club trouvé : {existingClub.name}</h3>
-                                <p className="text-emerald-700 dark:text-emerald-300 text-sm">Vous êtes déjà membre. Cliquez pour entrer.</p>
-                            </div>
-                        </div>
-                        <Button 
-                            onClick={onClubJoined} 
-                            className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-900/20"
-                        >
-                            Accéder au Dashboard →
-                        </Button>
-                    </Card>
-                </div>
-            )}
-
-            <div className="max-w-4xl w-full grid md:grid-cols-2 gap-12 items-center">
-                <Card className="space-y-6">
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white text-center">Créer un Club</h2>
+            <div className="max-w-4xl w-full grid md:grid-cols-2 gap-12">
+                <Card className="space-y-4">
+                    <h2 className="text-xl font-bold dark:text-white text-center">Créer un Club</h2>
                     <Input placeholder="Nom du Club" value={newClubName} onChange={e => setNewClubName(e.target.value)} />
-                    <Button className="w-full" onClick={handleCreate} disabled={isLoading}>Créer le Club</Button>
+                    <Button className="w-full" onClick={handleCreate} disabled={isLoading}>Créer</Button>
                 </Card>
-                <div className="space-y-6 p-6 text-center">
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Rejoindre un Club</h2>
-                    <Input 
-                        placeholder="CODE" className="text-center font-mono text-2xl tracking-widest uppercase"
-                        maxLength={6} value={joinCode} onChange={e => setJoinCode(e.target.value)}
-                    />
-                    <Button variant="outline" className="w-full" onClick={handleJoin} disabled={isLoading}>Rejoindre</Button>
+                <div className="space-y-4 text-center">
+                    <h2 className="text-xl font-bold dark:text-white">Rejoindre</h2>
+                    <Input placeholder="CODE" className="text-center font-mono text-2xl uppercase tracking-widest" maxLength={6} value={joinCode} onChange={e => setJoinCode(e.target.value)} />
+                    <Button variant="outline" className="w-full" onClick={handleJoin} disabled={isLoading}>Valider</Button>
                 </div>
             </div>
         </div>
