@@ -190,37 +190,44 @@ const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ u
         if (!newClubName) return;
         setIsLoading(true);
         try {
-            await ensureProfileExists(); // <-- Toujours là
+            await ensureProfileExists(); 
+
+            // --- NOUVEAU : On passe par la fonction serveur (RPC) ---
             const inviteCode = generateInviteCode();
-            const { data: club, error: ce } = await supabase.from('clubs').insert({ name: newClubName, invite_code: inviteCode }).select().single();
-            if (ce) throw ce;
-            const { error: me } = await supabase.from('club_members').insert({ club_id: club.id, user_id: user.id, role: 'admin' });
-            if (me) throw me;
+            const { data, error } = await supabase.rpc('api_create_club', {
+                name_input: newClubName,
+                invite_code_input: inviteCode
+            });
+
+            if (error) throw error;
+            if (data && !data.success) throw new Error(data.error);
+
+            // Si succès, on déclenche la suite
             onClubJoined();
-        } catch (e: any) { alert(e.message); } finally { setIsLoading(false); }
+        } catch (e: any) { 
+            console.error(e);
+            alert("Erreur Création : " + e.message); 
+        } finally { 
+            setIsLoading(false); 
+        }
     };
 
-   const handleJoin = async () => {
+    const handleJoin = async () => {
         if (!joinCode) return;
         setIsLoading(true);
         try {
             await ensureProfileExists(); 
 
-            // --- NOUVELLE MÉTHODE : RPC (Contourne le bug RLS) ---
+            // --- NOUVEAU : On passe par la fonction serveur (RPC) ---
             const { data, error } = await supabase.rpc('api_join_club', { 
                 invite_code_input: joinCode.toUpperCase() 
             });
 
             if (error) throw error;
-            
-            // Gestion de la réponse personnalisée de notre fonction
-            if (!data.success) {
-                throw new Error(data.error || "Impossible de rejoindre le club");
-            }
+            if (data && !data.success) throw new Error(data.error || "Impossible de rejoindre");
 
-            // Succès !
+            // Si succès, on déclenche la suite
             onClubJoined();
-
         } catch (e: any) { 
             console.error(e);
             alert("Erreur Rejoindre : " + e.message); 
