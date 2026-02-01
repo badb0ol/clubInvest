@@ -204,6 +204,19 @@ const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ u
 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 dark:bg-black p-6 transition-colors duration-500">
+            <div className="absolute top-8 left-8">
+                <button 
+                    onClick={() => supabase.auth.signOut()} 
+                    className="text-gray-500 hover:text-slate-900 dark:hover:text-white flex items-center gap-2 transition-all font-medium"
+                >
+                    <span>←</span> Déconnexion
+                </button>
+            </div>
+
+            <div className="text-center mb-8">
+                <p className="text-gray-500 text-sm uppercase tracking-widest mb-2">Compte actif</p>
+                <p className="text-xl font-medium text-slate-900 dark:text-white">{user?.email}</p>
+            </div>
             <div className="max-w-4xl w-full grid md:grid-cols-2 gap-12 items-center">
                 <Card className="space-y-6">
                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white text-center">Créer un Club</h2>
@@ -589,10 +602,23 @@ export default function App() {
             <br/><span className="text-gray-600 text-sm">Suivez la performance. Gérez les membres. Calculez la Quote-part.</span>
         </p>
         <button 
-            onClick={() => setView(session ? 'dashboard' : 'auth')}
-            className="bg-white text-black px-12 py-4 rounded-full font-bold text-lg hover:scale-105 transition-transform flex items-center gap-3"
-        >
-            Lancer l'App <span className="text-xl">→</span>
+            onClick={() => {
+                // Si pas de session -> Login
+                if (!session) {
+                setView('auth');
+                } 
+                // Si session mais pas de club -> Créer/Rejoindre
+                else if (!activeClub) {
+                setView('onboarding');
+                } 
+                // Si session + club -> Dashboard
+                else {
+                setView('dashboard');
+                }
+            }}
+            className="bg-white text-black px-12 py-4 rounded-full font-bold text-lg hover:scale-105 transition-transform"
+            >
+            Lancer l'App →
         </button>
         </div>
     );
