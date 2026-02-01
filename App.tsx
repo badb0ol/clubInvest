@@ -488,7 +488,7 @@ export default function App() {
 
   // --- HANDLERS ---
   
-cconst handleManualAddMember = async (name: string, email: string) => {
+const handleManualAddMember = async (name: string, email: string) => {
     if (!activeClub) return;
     setIsLoading(true);
     try {
