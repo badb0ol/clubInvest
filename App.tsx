@@ -28,7 +28,7 @@ const AuthScreen: React.FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess }) 
     
     // Login State
     const [loginIdentifier, setLoginIdentifier] = useState(''); // Email or Username
-    
+
     // Signup State
     const [signupEmail, setSignupEmail] = useState('');
     const [signupUsername, setSignupUsername] = useState('');
@@ -247,6 +247,9 @@ export default function App() {
   const [loadingSession, setLoadingSession] = useState(true);
   const [checkingMembership, setCheckingMembership] = useState(false);
   
+  // isLoading State
+  const [isLoading, setIsLoading] = useState(false);
+
   // App Data
   const [members, setMembers] = useState<Member[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -425,89 +428,88 @@ export default function App() {
   };
 
   const handleDeposit = async (memberId: string, amountStr: string) => {
-      if (!activeClub) return;
-      const amount = parseFloat(amountStr);
-      if (isNaN(amount) || amount <= 0) return alert("Montant invalide");
+    if (!activeClub) return;
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) return alert("Montant invalide");
 
-      const currentNav = portfolioSummary.navPerShare;
+    const currentNav = portfolioSummary.navPerShare;
+    setIsLoading(true); // Active le loader pour l'UX
 
-      if (memberId === 'ALL') {
-          // Bulk Deposit Logic
-          try {
-              let totalCashDelta = 0;
-              let totalSharesDelta = 0;
-              const transactions: Transaction[] = [];
+    try {
+        if (memberId === 'ALL') {
+            // --- LOGIQUE GROUPÉE (PERFORMANCE MAXIMALE) ---
+            
+            // 1. Calculs globaux (identiques pour tout le monde)
+            // Si on met 50€, tout le monde met 50€.
+            const sharesPerPerson = amount / currentNav;
+            const totalCashDelta = amount * members.length;
+            const totalSharesDelta = sharesPerPerson * members.length;
 
-              // Iterate over all members to create individual transactions
-              for (const m of members) {
-                  const sharesCreated = amount / currentNav;
-                  
-                  // Update member state locally to prepare for DB update
-                  const updatedMember = {
-                      ...m,
-                      shares_owned: m.shares_owned + sharesCreated,
-                      total_invested_fiat: m.total_invested_fiat + amount
-                  };
+            // 2. Préparation des Transactions (Batch Insert)
+            // On crée le tableau en mémoire instantanément
+            const transactions = members.map(m => ({
+                club_id: activeClub.id,
+                user_id: m.user_id,
+                type: 'DEPOSIT',
+                amount_fiat: amount,
+                shares_change: sharesPerPerson,
+                status: 'completed',
+                created_at: new Date().toISOString()
+            }));
 
-                  const transaction: Transaction = {
-                      id: crypto.randomUUID(),
-                      club_id: activeClub.id,
-                      user_id: m.user_id,
-                      type: 'DEPOSIT',
-                      amount_fiat: amount,
-                      shares_change: sharesCreated,
-                      created_at: new Date().toISOString()
-                  };
+            // 3. Préparation des Mises à jour Membres (Parallélisation)
+            // Au lieu d'attendre chaque membre un par un, on crée un tableau de promesses
+            const memberUpdates = members.map(m => 
+                supabase.from('club_members').update({
+                    shares_owned: m.shares_owned + sharesPerPerson,
+                    total_invested_fiat: m.total_invested_fiat + amount
+                }).eq('id', m.id)
+            );
 
-                  // Update individual member in DB
-                  await supabase.from('club_members').update({
-                      shares_owned: updatedMember.shares_owned,
-                      total_invested_fiat: updatedMember.total_invested_fiat
-                  }).eq('id', m.id);
+            // 4. EXÉCUTION SIMULTANÉE (Le turbo 🚀)
+            // On lance : l'update du Club + l'insert des Transactions + les updates de TOUS les membres en même temps
+            await Promise.all([
+                // Update Club
+                supabase.from('clubs').update({
+                    cash_balance: activeClub.cash_balance + totalCashDelta,
+                    total_shares: activeClub.total_shares + totalSharesDelta
+                }).eq('id', activeClub.id),
 
-                  totalCashDelta += amount;
-                  totalSharesDelta += sharesCreated;
-                  transactions.push(transaction);
-              }
+                // Insert Transactions (Batch)
+                supabase.from('transactions').insert(transactions),
 
-              // Update Club Totals
-              const newCash = activeClub.cash_balance + totalCashDelta;
-              const newShares = activeClub.total_shares + totalSharesDelta;
-              
-              await supabase.from('clubs').update({
-                  cash_balance: newCash,
-                  total_shares: newShares
-              }).eq('id', activeClub.id);
+                // Update Members (Parallel)
+                ...memberUpdates
+            ]);
 
-              // Batch Insert Transactions
-              await supabase.from('transactions').insert(transactions);
-              
-              // Local State Update
-              setActiveClub({ ...activeClub, cash_balance: newCash, total_shares: newShares });
-              await loadClubData(activeClub.id);
-              setModal({ type: null });
-              alert(`Dépôt de ${amount}€ effectué pour ${members.length} membres !`);
+            alert(`Succès : ${members.length} membres ont déposé ${amount}€ chacun.`);
 
-          } catch (e: any) {
-              console.error(e);
-              alert("Erreur lors du dépôt groupé: " + e.message);
-          }
-      } else {
-          // Single Member Deposit
-          const member = members.find(m => m.id === memberId);
-          if (!member) return;
+        } else {
+            // --- LOGIQUE INDIVIDUELLE (Inchangée mais nettoyée) ---
+            const member = members.find(m => m.id === memberId);
+            if (!member) return;
 
-          const { updatedClub, updatedMember, transaction } = executeDeposit(activeClub, member, amount, currentNav);
-          
-          await supabase.from('transactions').insert(transaction);
-          await supabase.from('clubs').update({ cash_balance: updatedClub.cash_balance, total_shares: updatedClub.total_shares }).eq('id', activeClub.id);
-          await supabase.from('club_members').update({ shares_owned: updatedMember.shares_owned, total_invested_fiat: updatedMember.total_invested_fiat }).eq('id', member.id);
-          
-          setActiveClub(updatedClub);
-          await loadClubData(activeClub.id);
-          setModal({ type: null });
-      }
-  };
+            const { updatedClub, updatedMember, transaction } = executeDeposit(activeClub, member, amount, currentNav);
+            
+            // On groupe aussi les promesses ici pour gagner quelques millisecondes
+            await Promise.all([
+                supabase.from('transactions').insert(transaction),
+                supabase.from('clubs').update({ cash_balance: updatedClub.cash_balance, total_shares: updatedClub.total_shares }).eq('id', activeClub.id),
+                supabase.from('club_members').update({ shares_owned: updatedMember.shares_owned, total_invested_fiat: updatedMember.total_invested_fiat }).eq('id', member.id)
+            ]);
+        }
+
+        // 5. Rafraîchissement final
+        if (session) await fetchClubContext(session.user.id); // On recharge les données fraîches depuis la DB
+        setModal({ type: null });
+
+    } catch (e: any) {
+        console.error(e);
+        alert("Erreur lors du dépôt : " + e.message);
+    } finally {
+        setIsLoading(false);
+    }
+};
 
   const handleTrade = async (ticker: string, qtyStr: string, priceStr: string) => {
       setErrorMsg(null);
