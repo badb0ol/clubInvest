@@ -5,7 +5,7 @@
 
 ---
 
-## ✨ Fonctionnalités Clés
+## Fonctionnalités Clés
 
 * **Tableau de Bord Premium :** Visualisation de la performance globale et de la Valeur Liquidative (NAV) en temps réel.
 * **Suivi Multi-Actifs :** Intégration de l'API **Twelve Data** pour des prix de marché actualisés.
@@ -16,7 +16,7 @@
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 | Secteur | Technologie |
 | :--- | :--- |
@@ -30,7 +30,7 @@
 
 ---
 
-## 🚀 Installation Rapide
+## Installation Rapide
 
 ### 1. Cloner le projet
 ```bash
@@ -45,7 +45,7 @@ npm install
 ```
 
 ### 3. Configuration des variables d'environnement
-Créez un fichier ```bash .env``` à la racine du projet :
+Créez un fichier ```.env``` à la racine du projet :
 
 ```bash
 VITE_SUPABASE_URL=votre_url_supabase
