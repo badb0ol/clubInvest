@@ -502,62 +502,61 @@ export default function App() {
 
   // --- HANDLERS ---
   
-{/*  const handleManualAddMember = async (name: string, email: string) => {
+const handleManualAddMember = async (name: string, email: string) => {
     if (!activeClub) return;
-    const fakeId = crypto.randomUUID(); 
-    await supabase.from('profiles').insert({ id: fakeId, full_name: name, email: email });
-    await supabase.from('club_members').insert({ club_id: activeClub.id, user_id: fakeId, role: 'member' });
-    await loadClubData(activeClub.id);
-    setModal({ type: null });
-  }; */}
+    setIsLoading(true);
+    try {
+        // Appel à la fonction sécurisée SQL créée à l'étape 1
+        const { data, error } = await supabase.rpc('api_admin_add_member', {
+            target_club_id: activeClub.id,
+            new_name: name,
+            new_email: email
+        });
+
+        if (error) throw error;
+        if (data && !data.success) throw new Error(data.error);
+
+        await loadClubData(activeClub.id);
+        alert("Membre ajouté avec succès !");
+        setModal({ type: null });
+    } catch (e: any) {
+        console.error(e);
+        alert("Erreur ajout : " + e.message);
+    } finally {
+        setIsLoading(false);
+    }
+  };
 
 const handleDeposit = async (memberId: string, amountStr: string) => {
-    if (!activeClub || !session) return;
+    if (!activeClub) return;
     const amount = parseFloat(amountStr);
     if (isNaN(amount) || amount <= 0) return alert("Montant invalide");
 
-    const currentNav = portfolioSummary.navPerShare || 100; // Sécurité si NAV = 0
+    // 1. On récupère la NAV actuelle pour le calcul des parts
+    // Si c'est le tout premier dépôt, on arbitre la NAV à 100€
+    const currentNav = portfolioSummary.navPerShare > 0 ? portfolioSummary.navPerShare : 100;
+    
     setIsLoading(true);
 
     try {
-        if (memberId === 'ALL') {
-            const sharesPerPerson = amount / currentNav;
-            const totalCashDelta = amount * members.length;
-            const totalSharesDelta = sharesPerPerson * members.length;
+        // 2. Appel au Moteur SQL (RPC)
+        const { data, error } = await supabase.rpc('api_process_deposit', {
+            p_club_id: activeClub.id,
+            p_target_member_id: memberId, // 'ALL' ou l'ID du membre
+            p_amount_per_person: amount,
+            p_current_nav: currentNav
+        });
 
-            // 1. Préparer les updates de CHAQUE membre
-            const memberUpdates = members.map(m => 
-                supabase.from('club_members').update({
-                    shares_owned: m.shares_owned + sharesPerPerson,
-                    total_invested_fiat: m.total_invested_fiat + amount
-                }).eq('id', m.id)
-            );
+        if (error) throw error;
+        if (data && !data.success) throw new Error(data.error);
 
-            // 2. Envoyer tout en parallèle
-            await Promise.all([
-                supabase.from('clubs').update({
-                    cash_balance: activeClub.cash_balance + totalCashDelta,
-                    total_shares: activeClub.total_shares + totalSharesDelta
-                }).eq('id', activeClub.id),
-                
-                supabase.from('transactions').insert(members.map(m => ({
-                    club_id: activeClub.id,
-                    user_id: m.user_id,
-                    type: 'DEPOSIT',
-                    amount_fiat: amount,
-                    shares_change: sharesPerPerson
-                }))),
-
-                ...memberUpdates
-            ]);
-            alert("Dépôt collectif validé !");
-        } else {
-            // Logique individuelle (similaire mais pour un seul ID)
-            // ... (ton code actuel pour un membre seul)
-        }
+        // 3. Rafraîchissement des données
         await loadClubData(activeClub.id);
+        
+        alert("Dépôt validé et NAV recalculée !");
         setModal({ type: null });
     } catch (e: any) {
+        console.error(e);
         alert("Erreur dépôt : " + e.message);
     } finally {
         setIsLoading(false);
@@ -1170,20 +1169,23 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
             </div>
         </main>
 
-        {/* MODALS 
+        {/* MODALS */}
         {modal.type === 'addMember' && (
             <Modal isOpen={true} onClose={() => setModal({type:null})} title="Ajouter Membre">
                 <div className="space-y-4">
-                    <Input id="newMemName" placeholder="Nom" />
-                    <Input id="newMemEmail" placeholder="Email" />
+                    <Input id="newMemName" placeholder="Nom complet" />
+                    <Input id="newMemEmail" placeholder="Email (facultatif)" />
                     <Button onClick={() => {
                         const name = (document.getElementById('newMemName') as HTMLInputElement).value;
                         const email = (document.getElementById('newMemEmail') as HTMLInputElement).value;
+                        if(!name) return alert("Le nom est obligatoire");
                         handleManualAddMember(name, email);
-                    }}>Ajouter</Button>
+                    }}>
+                        {isLoading ? 'Ajout...' : 'Ajouter au club'}
+                    </Button>
                 </div>
             </Modal>
-        )}*/}
+        )}
 
         {modal.type === 'deposit' && (
             <Modal isOpen={true} onClose={() => setModal({type:null})} title="Dépôt">
