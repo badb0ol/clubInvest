@@ -379,7 +379,7 @@ export default function App() {
       setAssetPrices(prev => ({ ...prev, ...newPrices }));
     };
     fetchPrices();
-    const interval = setInterval(fetchPrices, 15000); // 15s refresh
+    const interval = setInterval(fetchPrices, 300000); // 5m refresh interval for free plan API call
     return () => clearInterval(interval);
   }, [activeClub, assets]);
 
@@ -390,7 +390,10 @@ export default function App() {
     };
     return calculatePortfolioState(activeClub, assets, assetPrices);
   }, [activeClub, assets, assetPrices]);
-
+    
+  // Définition de la variable pour savoir si l'utilisateur actuel est Admin
+  const isAdmin = currentUserMember?.role === 'admin';
+  
   const filteredHistory = useMemo(() => {
     if(!activeClub) return [];
     
@@ -427,38 +430,21 @@ export default function App() {
     setModal({ type: null });
   };
 
-  const handleDeposit = async (memberId: string, amountStr: string) => {
-    if (!activeClub) return;
+const handleDeposit = async (memberId: string, amountStr: string) => {
+    if (!activeClub || !session) return;
     const amount = parseFloat(amountStr);
     if (isNaN(amount) || amount <= 0) return alert("Montant invalide");
 
-    const currentNav = portfolioSummary.navPerShare;
-    setIsLoading(true); // Active le loader pour l'UX
+    const currentNav = portfolioSummary.navPerShare || 100; // Sécurité si NAV = 0
+    setIsLoading(true);
 
     try {
         if (memberId === 'ALL') {
-            // --- LOGIQUE GROUPÉE (PERFORMANCE MAXIMALE) ---
-            
-            // 1. Calculs globaux (identiques pour tout le monde)
-            // Si on met 50€, tout le monde met 50€.
             const sharesPerPerson = amount / currentNav;
             const totalCashDelta = amount * members.length;
             const totalSharesDelta = sharesPerPerson * members.length;
 
-            // 2. Préparation des Transactions (Batch Insert)
-            // On crée le tableau en mémoire instantanément
-            const transactions = members.map(m => ({
-                club_id: activeClub.id,
-                user_id: m.user_id,
-                type: 'DEPOSIT',
-                amount_fiat: amount,
-                shares_change: sharesPerPerson,
-                status: 'completed',
-                created_at: new Date().toISOString()
-            }));
-
-            // 3. Préparation des Mises à jour Membres (Parallélisation)
-            // Au lieu d'attendre chaque membre un par un, on crée un tableau de promesses
+            // 1. Préparer les updates de CHAQUE membre
             const memberUpdates = members.map(m => 
                 supabase.from('club_members').update({
                     shares_owned: m.shares_owned + sharesPerPerson,
@@ -466,46 +452,32 @@ export default function App() {
                 }).eq('id', m.id)
             );
 
-            // 4. EXÉCUTION SIMULTANÉE (Le turbo 🚀)
-            // On lance : l'update du Club + l'insert des Transactions + les updates de TOUS les membres en même temps
+            // 2. Envoyer tout en parallèle
             await Promise.all([
-                // Update Club
                 supabase.from('clubs').update({
                     cash_balance: activeClub.cash_balance + totalCashDelta,
                     total_shares: activeClub.total_shares + totalSharesDelta
                 }).eq('id', activeClub.id),
+                
+                supabase.from('transactions').insert(members.map(m => ({
+                    club_id: activeClub.id,
+                    user_id: m.user_id,
+                    type: 'DEPOSIT',
+                    amount_fiat: amount,
+                    shares_change: sharesPerPerson
+                }))),
 
-                // Insert Transactions (Batch)
-                supabase.from('transactions').insert(transactions),
-
-                // Update Members (Parallel)
                 ...memberUpdates
             ]);
-
-            alert(`Succès : ${members.length} membres ont déposé ${amount}€ chacun.`);
-
+            alert("Dépôt collectif validé !");
         } else {
-            // --- LOGIQUE INDIVIDUELLE (Inchangée mais nettoyée) ---
-            const member = members.find(m => m.id === memberId);
-            if (!member) return;
-
-            const { updatedClub, updatedMember, transaction } = executeDeposit(activeClub, member, amount, currentNav);
-            
-            // On groupe aussi les promesses ici pour gagner quelques millisecondes
-            await Promise.all([
-                supabase.from('transactions').insert(transaction),
-                supabase.from('clubs').update({ cash_balance: updatedClub.cash_balance, total_shares: updatedClub.total_shares }).eq('id', activeClub.id),
-                supabase.from('club_members').update({ shares_owned: updatedMember.shares_owned, total_invested_fiat: updatedMember.total_invested_fiat }).eq('id', member.id)
-            ]);
+            // Logique individuelle (similaire mais pour un seul ID)
+            // ... (ton code actuel pour un membre seul)
         }
-
-        // 5. Rafraîchissement final
-        if (session) await fetchClubContext(session.user.id); // On recharge les données fraîches depuis la DB
+        await loadClubData(activeClub.id);
         setModal({ type: null });
-
     } catch (e: any) {
-        console.error(e);
-        alert("Erreur lors du dépôt : " + e.message);
+        alert("Erreur dépôt : " + e.message);
     } finally {
         setIsLoading(false);
     }
@@ -559,6 +531,33 @@ export default function App() {
       setAiInsight(res);
       setIsAnalyzing(false);
   };
+
+  const handleKickMember = async (memberId: string) => {
+    if (!activeClub) return;
+    
+    // 1. Vérifier si on ne s'auto-supprime pas (sécurité)
+    const memberToKick = members.find(m => m.id === memberId);
+    if (memberToKick?.user_id === session?.user.id) {
+        return alert("Tu ne peux pas te virer toi-même !");
+    }
+
+    if (!confirm("Es-tu sûr de vouloir retirer ce membre du club ?")) return;
+
+    try {
+        const { error } = await supabase
+            .from('club_members')
+            .delete()
+            .eq('id', memberId);
+
+        if (error) throw error;
+
+        // Mettre à jour l'affichage local
+        setMembers(members.filter(m => m.id !== memberId));
+        alert("Membre retiré avec succès.");
+    } catch (e: any) {
+        alert("Erreur : " + e.message);
+        }
+    };
 
   const handleConnectBank = (name: string) => {
       setIsConnectingBank(true);
@@ -950,53 +949,92 @@ export default function App() {
                     </Card>
                 )}
 
-                {/* MEMBERS VIEW */}
-                {view === 'members' && (
-                    <>
-                        <div className="flex justify-end"><Button onClick={() => setModal({ type: 'addMember' })}>+ Membre</Button></div>
-                        <Card className="p-0 overflow-hidden">
-                            {/* Mobile List */}
-                            <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
-                                {members.map(m => (
-                                    <div key={m.id} className="p-4 flex justify-between items-center">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-600 dark:text-slate-400">
-                                                {m.full_name.charAt(0)}
-                                            </div>
-                                            <div>
-                                                <div className="font-bold text-slate-900 dark:text-white">{m.full_name}</div>
-                                                <Badge type="neutral">{m.role}</Badge>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="text-sm font-bold">{m.shares_owned.toFixed(2)} parts</div>
-                                            <div className="text-xs text-slate-500">Inv: {m.total_invested_fiat.toFixed(0)}€</div>
-                                        </div>
-                                    </div>
-                                ))}
+{/* MEMBERS VIEW */}
+{view === 'members' && (
+    <>
+        <div className="flex justify-end mb-4">
+            <Button onClick={() => setModal({ type: 'addMember' })}>+ Membre</Button>
+        </div>
+        
+        <Card className="p-0 overflow-hidden bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+            {/* 1. Mobile List (Optimisée pour iPhone) */}
+            <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
+                {members.map(m => (
+                    <div key={m.id} className="p-4 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-600 dark:text-slate-400">
+                                {m.full_name?.charAt(0) || '?'}
+                            </div>
+                            <div>
+                                <div className="font-bold text-slate-900 dark:text-white leading-tight">
+                                    {m.full_name || 'Sans nom'}
+                                </div>
+                                <div className="mt-1">
+                                    <Badge type="neutral">{m.role}</Badge>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                            <div className="text-right">
+                                <div className="text-sm font-bold text-slate-900 dark:text-white">
+                                    {m.shares_owned.toFixed(2)} parts
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                    Inv: {m.total_invested_fiat.toFixed(0)}€
+                                </div>
                             </div>
 
-                            {/* Desktop Table */}
-                            <div className="hidden md:block">
-                                <Table headers={['Nom', 'Rôle', 'Parts', 'Investi']}>
-                                    {members.map(m => (
-                                        <TableRow key={m.id}>
-                                            <TableCell>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-bold text-xs">{m.full_name.charAt(0)}</div>
-                                                    {m.full_name}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell><Badge>{m.role}</Badge></TableCell>
-                                            <TableCell>{m.shares_owned.toFixed(2)}</TableCell>
-                                            <TableCell>{m.total_invested_fiat.toFixed(2)} €</TableCell>
-                                        </TableRow>
-                                    ))}
-                                </Table>
-                            </div>
-                        </Card>
-                    </>
-                )}
+                            {/* Bouton Kick Mobile */}
+                            {isAdmin && m.user_id !== session?.user.id && (
+                                <button 
+                                    onClick={() => handleKickMember(m.id)}
+                                    className="p-2 text-red-500 bg-red-50 dark:bg-red-900/20 rounded-full active:scale-90 transition-transform"
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {/* 2. Desktop Table */}
+            <div className="hidden md:block">
+                {/* Ajout d'une colonne vide dans les headers pour le bouton Kick */}
+                <Table headers={['Nom', 'Rôle', 'Parts', 'Investi Total', 'Actions']}>
+                    {members.map(m => (
+                        <TableRow key={m.id}>
+                            <TableCell>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-bold text-xs">
+                                        {m.full_name?.charAt(0) || '?'}
+                                    </div>
+                                    <span className="font-medium">{m.full_name || 'Membre'}</span>
+                                </div>
+                            </TableCell>
+                            <TableCell><Badge>{m.role}</Badge></TableCell>
+                            <TableCell className="font-mono">{m.shares_owned.toFixed(2)}</TableCell>
+                            <TableCell>{m.total_invested_fiat.toFixed(2)} €</TableCell>
+                            
+                            <TableCell className="text-right">
+                                {isAdmin && m.user_id !== session?.user.id && (
+                                    <button 
+                                        onClick={() => handleKickMember(m.id)}
+                                        className="text-red-500 hover:bg-red-900/20 p-1.5 rounded-full transition-colors"
+                                        title="Retirer du club"
+                                    >
+                                        ✕
+                                    </button>
+                                )}
+                            </TableCell>
+                        </TableRow>
+                    ))}
+                </Table>
+            </div>
+        </Card>
+    </>
+)}
 
                 {/* JOURNAL VIEW */}
                 {view === 'journal' && (
