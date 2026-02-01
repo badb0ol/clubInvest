@@ -2,7 +2,7 @@
 import { Asset, Club, Currency, PortfolioSummary } from '../types';
 
 // API Configuration
-const API_KEY = '3647f10692fd4d419a27c65d1b2419cd'; 
+const API_KEY = import.meta.env.VITE_TWELVE_DATA_API_KEY; 
 const BASE_URL = 'https://api.twelvedata.com/price';
 
 // Mock Exchange Rates (For demo purposes, in prod fetch this too)
