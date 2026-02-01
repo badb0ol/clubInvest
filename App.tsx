@@ -200,17 +200,33 @@ const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ u
         } catch (e: any) { alert(e.message); } finally { setIsLoading(false); }
     };
 
-    const handleJoin = async () => {
+   const handleJoin = async () => {
         if (!joinCode) return;
         setIsLoading(true);
         try {
-            await ensureProfileExists(); // <-- Toujours là
-            const { data: club, error } = await supabase.from('clubs').select('*').eq('invite_code', joinCode.toUpperCase()).single();
-            if (error || !club) throw new Error("Code invalide");
-            const { error: je } = await supabase.from('club_members').insert({ club_id: club.id, user_id: user.id, role: 'member' });
-            if (je && je.code !== '23505') throw je;
+            await ensureProfileExists(); 
+
+            // --- NOUVELLE MÉTHODE : RPC (Contourne le bug RLS) ---
+            const { data, error } = await supabase.rpc('api_join_club', { 
+                invite_code_input: joinCode.toUpperCase() 
+            });
+
+            if (error) throw error;
+            
+            // Gestion de la réponse personnalisée de notre fonction
+            if (!data.success) {
+                throw new Error(data.error || "Impossible de rejoindre le club");
+            }
+
+            // Succès !
             onClubJoined();
-        } catch (e: any) { alert(e.message); } finally { setIsLoading(false); }
+
+        } catch (e: any) { 
+            console.error(e);
+            alert("Erreur Rejoindre : " + e.message); 
+        } finally { 
+            setIsLoading(false); 
+        }
     };
 
     // --- RENDU CONDITIONNEL STRICT ---
