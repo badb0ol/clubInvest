@@ -322,34 +322,44 @@ export default function App() {
 
   // 2. FETCH CLUB CONTEXT (Strict 1 Club Rule)
   const fetchClubContext = async (userId: string) => {
-      setCheckingMembership(true);
-      try {
-          // Fetch the first club found (Strict Rule: One club per user)
-          const { data: memberShips } = await supabase
+    setCheckingMembership(true);
+    try {
+        const { data: memberShips, error } = await supabase
             .from('club_members')
             .select('*, clubs(*)')
             .eq('user_id', userId)
-            .limit(1); // Enforce checking for single club
-          
-          if (memberShips && memberShips.length > 0) {
-              const membership = memberShips[0];
-              const club = membership.clubs;
-              const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', userId).single();
-              
-              setActiveClub(club);
-              setCurrentUserMember({ ...membership, full_name: profile?.full_name || 'Moi' });
-              await loadClubData(club.id);
-          } else {
-              // Not a member of any club -> Send to Landing/Onboarding
-              setActiveClub(null);
-              setCurrentUserMember(null);
-          }
-      } catch (e) {
-          console.error("Error fetching context:", e);
-      } finally {
-          setCheckingMembership(false);
-      }
-  };
+            .limit(1);
+        
+        if (error) throw error; 
+
+        if (memberShips && memberShips.length > 0) {
+            const membership = memberShips[0];
+            const club = membership.clubs;
+            
+            // 1. On récupère le profil
+            const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', userId).single();
+            
+            // 2. On met à jour les états
+            setActiveClub(club);
+            setCurrentUserMember({ ...membership, full_name: profile?.full_name || 'Moi' });
+            
+            // --- LE FIX : On force le passage au Dashboard ---
+            setView('dashboard'); 
+            
+            await loadClubData(club.id);
+        } else {
+            // Pas de club -> On force l'onboarding
+            setActiveClub(null);
+            setCurrentUserMember(null);
+            setView('onboarding'); // Sécurité pour ne pas rester sur Landing
+        }
+    } catch (e) {
+        console.error("Error fetching context:", e);
+        // Si erreur RLS (récursion), l'app reste bloquée ici
+    } finally {
+        setCheckingMembership(false);
+    }
+};
 
   const loadClubData = async (clubId: string) => {
       const { data: m } = await supabase.from('club_members').select('*, profiles(full_name)').eq('club_id', clubId);
