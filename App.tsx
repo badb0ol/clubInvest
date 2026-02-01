@@ -141,36 +141,58 @@ const AuthScreen: React.FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess }) 
     );
 };
 
-// 2. ONBOARDING SCREEN
+// 2. ONBOARDING SCREEN (Modifié avec le bouton "Rejoindre mon club")
 const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ user, onClubJoined }) => {
     const [newClubName, setNewClubName] = useState('');
     const [joinCode, setJoinCode] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    
+    // Nouvel état pour stocker le club existant si trouvé
+    const [existingClub, setExistingClub] = useState<any | null>(null);
+
+    // Vérification automatique au chargement
+    useEffect(() => {
+        const checkExistingMembership = async () => {
+            try {
+                // On cherche si l'user a déjà une ligne dans club_members
+                const { data, error } = await supabase
+                    .from('club_members')
+                    .select('*, clubs(*)')
+                    .eq('user_id', user.id)
+                    .maybeSingle(); // maybeSingle évite les erreurs si 0 résultat
+
+                if (data && data.clubs) {
+                    console.log("Club trouvé :", data.clubs.name);
+                    setExistingClub(data.clubs);
+                }
+            } catch (e) {
+                console.error("Erreur vérification club:", e);
+            }
+        };
+        
+        checkExistingMembership();
+    }, [user.id]);
 
     const handleCreate = async () => {
         if (!newClubName) return;
         setIsLoading(true);
         try {
             const inviteCode = generateInviteCode();
-            // 1. Create Club
             const { data: club, error: clubError } = await supabase.from('clubs').insert({
                 name: newClubName,
                 invite_code: inviteCode,
             }).select().single();
             if (clubError) throw clubError;
 
-            // 2. Add Member (Admin) - Using Upsert to prevent duplicate errors if double clicked
-            const { error: memberError } = await supabase.from('club_members').upsert({
+            const { error: memberError } = await supabase.from('club_members').insert({
                 club_id: club.id,
                 user_id: user.id,
                 role: 'admin',
-            }, { onConflict: 'club_id, user_id', ignoreDuplicates: true });
+            });
             
             if (memberError) throw memberError;
-
             onClubJoined();
         } catch (e: any) {
-            console.error(e);
             alert("Erreur: " + e.message);
         } finally {
             setIsLoading(false);
@@ -181,27 +203,38 @@ const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ u
         if (!joinCode) return;
         setIsLoading(true);
         try {
-            const { data: club, error } = await supabase.from('clubs').select('*').eq('invite_code', joinCode).single();
-            if (error || !club) throw new Error("Code invalide ou club inexistant");
+            // .toUpperCase() pour éviter les erreurs de casse
+            const { data: club, error } = await supabase
+                .from('clubs')
+                .select('*')
+                .eq('invite_code', joinCode.toUpperCase())
+                .single();
+            
+            if (error || !club) throw new Error("Code invalide");
 
             const { error: joinError } = await supabase.from('club_members').insert({
-            club_id: club.id,
-            user_id: user.id,
-            role: 'member'
-        });
+                club_id: club.id,
+                user_id: user.id,
+                role: 'member'
+            });
 
-        if (joinError) {
-            if (joinError.code === '23505') throw new Error("Vous êtes déjà membre de ce club !");
-            throw joinError;
+            if (joinError) {
+                // Si déjà membre, on redirige quand même !
+                if (joinError.code === '23505') {
+                    alert("Vous êtes déjà membre ! Redirection...");
+                    onClubJoined();
+                    return;
+                }
+                throw joinError;
+            }
+
+            onClubJoined();
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setIsLoading(false);
         }
-
-        onClubJoined();
-    } catch (e: any) {
-        alert(e.message);
-    } finally {
-        setIsLoading(false);
-    }
-};
+    };
 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 dark:bg-black p-6 transition-colors duration-500">
@@ -218,6 +251,28 @@ const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ u
                 <p className="text-gray-500 text-sm uppercase tracking-widest mb-2">Compte actif</p>
                 <p className="text-xl font-medium text-slate-900 dark:text-white">{user?.email}</p>
             </div>
+
+            {/* --- LE BOUTON MAGIQUE SI CLUB TROUVÉ --- */}
+            {existingClub && (
+                <div className="w-full max-w-4xl mb-8 animate-in slide-in-from-top-4 duration-500">
+                    <Card className="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-emerald-100 dark:bg-emerald-800 rounded-full text-2xl">🏠</div>
+                            <div className="text-left">
+                                <h3 className="font-bold text-emerald-900 dark:text-emerald-100 text-lg">Club trouvé : {existingClub.name}</h3>
+                                <p className="text-emerald-700 dark:text-emerald-300 text-sm">Vous êtes déjà membre. Cliquez pour entrer.</p>
+                            </div>
+                        </div>
+                        <Button 
+                            onClick={onClubJoined} 
+                            className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-900/20"
+                        >
+                            Accéder au Dashboard →
+                        </Button>
+                    </Card>
+                </div>
+            )}
+
             <div className="max-w-4xl w-full grid md:grid-cols-2 gap-12 items-center">
                 <Card className="space-y-6">
                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white text-center">Créer un Club</h2>
