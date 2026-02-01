@@ -1,7 +1,7 @@
-#  ClubInvest
+# ClubInvest
 ### Le système d'exploitation minimaliste pour les clubs d'investissement modernes.
 
-**ClubInvest** simplifie la gestion des clubs d'investissement en automatisant les calculs complexes de **Quote-part (NAV)**, le suivi des actifs en temps réel et la gestion des membres. Conçu avec une approche *mobile-first* et une esthétique "Dark Mode" inspirée d'Apple.
+**ClubInvest** simplifie la gestion des clubs d'investissement en automatisant les calculs complexes de **Quote-part (Net Asset Value)**, le suivi des actifs en temps réel et la gestion des membres. Conçu avec une approche *mobile-first* et une esthétique "Dark Mode" inspirée d'Apple.
 
 ---
 
@@ -34,23 +34,30 @@
 
 ### 1. Cloner le projet
 ```bash
-git clone [https://github.com/votre-username/clubinvest.git](https://github.com/votre-username/clubinvest.git)
+git clone https://github.com/votre-username/clubinvest.git
 cd clubinvest
+```
 
-Installer les dépendances :
+### 1. Installer les dépendances :
 
+```bash
 npm install
+```
 
-Configuration des variables d'environnement : Créez un fichier .env à la racine :
+### 3. Configuration des variables d'environnement
+Créez un fichier ```bash .env``` à la racine du projet :
 
+```bash
 VITE_SUPABASE_URL=votre_url_supabase
 VITE_SUPABASE_ANON_KEY=votre_cle_anon
 VITE_TWELVE_DATA_API_KEY=votre_cle_twelve_data
 VITE_GEMINI_API_KEY=votre_cle_google_gemini
+```
 
 Lancer en local :
-
+```bash
 npm run dev
+```
 
 Architecture & Sécurité 
 L'application utilise des politiques de sécurité RLS (Row Level Security) strictes sur Supabase pour garantir que :
