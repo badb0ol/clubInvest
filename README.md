@@ -1,5 +1,5 @@
 # ClubInvest
-### Le système d'exploitation minimaliste pour les clubs d'investissement modernes.
+### L'application minimaliste pour les clubs d'investissement modernes.
 
 **ClubInvest** simplifie la gestion des clubs d'investissement en automatisant les calculs complexes de **Quote-part (Net Asset Value)**, le suivi des actifs en temps réel et la gestion des membres. Conçu avec une approche *mobile-first* et une esthétique "Dark Mode" inspirée d'Apple.
 
