@@ -23,17 +23,11 @@ type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' |
 // --- SUB-COMPONENTS ---
 
 // 1. AUTH SCREEN
-const AuthScreen: React.FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess }) => {
+const AuthScreen: React.FC<{ onAuthSuccess: () => void, onBack: () => void }> = ({ onAuthSuccess, onBack }) => {
     const [isLogin, setIsLogin] = useState(true);
-    
-    // Login State
-    const [loginIdentifier, setLoginIdentifier] = useState(''); // Email or Username
-
-    // Signup State
+    const [loginIdentifier, setLoginIdentifier] = useState(''); 
     const [signupEmail, setSignupEmail] = useState('');
     const [signupUsername, setSignupUsername] = useState('');
-    
-    // Shared State
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -45,66 +39,74 @@ const AuthScreen: React.FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess }) 
             if (isLogin) {
                 let emailToUse = loginIdentifier.trim();
                 
-                // If input does not contain '@', assume it is a username and look it up
+                // LOGIN PAR PSEUDO
+                // Si l'identifiant n'est pas un email, on va chercher l'email associé au full_name
                 if (!emailToUse.includes('@')) {
-                    const { data: profile, error: profileError } = await supabase
+                    const { data: profile, error: pError } = await supabase
                         .from('profiles')
                         .select('email')
-                        .eq('full_name', emailToUse) // Mapping username to full_name as per schema
-                        .single();
+                        .eq('full_name', emailToUse)
+                        .maybeSingle();
                     
-                    if (profileError || !profile) {
-                        throw new Error("Nom d'utilisateur introuvable.");
-                    }
+                    if (pError || !profile) throw new Error("Pseudo introuvable.");
                     emailToUse = profile.email;
                 }
-
-                const { error } = await supabase.auth.signInWithPassword({ email: emailToUse, password });
+                
+                const { error } = await supabase.auth.signInWithPassword({ 
+                    email: emailToUse, 
+                    password 
+                });
                 if (error) throw error;
             } else {
-                // Sign Up
+                // INSCRIPTION
                 const { data, error } = await supabase.auth.signUp({ 
                     email: signupEmail, 
-                    password,
-                    options: { data: { full_name: signupUsername } } 
+                    password 
                 });
                 if (error) throw error;
                 
-                // Create Profile Row
                 if (data.user) {
-                    await supabase.from('profiles').insert({
-                        id: data.user.id,
-                        email: signupEmail,
-                        full_name: signupUsername
+                    // On enregistre le pseudo choisi dans la table profiles
+                    await supabase.from('profiles').insert({ 
+                        id: data.user.id, 
+                        email: signupEmail, 
+                        full_name: signupUsername 
                     });
                 }
             }
             onAuthSuccess();
-        } catch (e: any) {
-            setError(e.message);
-        } finally {
-            setLoading(false);
+        } catch (e: any) { 
+            setError(e.message); 
+        } finally { 
+            setLoading(false); 
         }
     };
 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 dark:bg-black p-4 transition-colors duration-500">
+            {/* Bouton retour vers Landing */}
+            <button onClick={onBack} className="absolute top-8 left-8 text-slate-500 hover:text-white transition-colors">
+                ← Retour
+            </button>
+
             <div className="mb-10 scale-125">
                 <Logo className="justify-center" />
             </div>
+
             <Card className="w-full max-w-md space-y-6">
                 <div className="text-center">
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
                         {isLogin ? 'Bon retour parmi nous' : 'Créer un compte'}
                     </h1>
-                    <p className="text-slate-500 text-sm mt-2">Connectez-vous pour accéder à votre club.</p>
                 </div>
+
                 {error && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg">{error}</div>}
+
                 <div className="space-y-4">
                     {isLogin ? (
                         <Input 
                             type="text" 
-                            placeholder="Email ou Nom d'utilisateur" 
+                            placeholder="Email ou Pseudo" 
                             value={loginIdentifier} 
                             onChange={e => setLoginIdentifier(e.target.value)} 
                         />
@@ -112,7 +114,7 @@ const AuthScreen: React.FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess }) 
                         <>
                             <Input 
                                 type="text" 
-                                placeholder="Nom d'utilisateur" 
+                                placeholder="Pseudo de connexion" 
                                 value={signupUsername} 
                                 onChange={e => setSignupUsername(e.target.value)} 
                             />
@@ -125,14 +127,18 @@ const AuthScreen: React.FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess }) 
                         </>
                     )}
                     <Input 
-                        type="password" placeholder="Mot de passe" value={password} onChange={e => setPassword(e.target.value)} 
+                        type="password" 
+                        placeholder="Mot de passe" 
+                        value={password} 
+                        onChange={e => setPassword(e.target.value)} 
                     />
                     <Button className="w-full" onClick={handleAuth} disabled={loading}>
                         {loading ? 'Chargement...' : (isLogin ? 'Se connecter' : "S'inscrire")}
                     </Button>
                 </div>
+
                 <div className="text-center">
-                    <button onClick={() => setIsLogin(!isLogin)} className="text-sm text-slate-400 hover:text-slate-900 dark:hover:text-white underline transition-colors">
+                    <button onClick={() => setIsLogin(!isLogin)} className="text-sm text-slate-400 hover:text-slate-900 dark:hover:text-white underline">
                         {isLogin ? "Pas de compte ? S'inscrire" : "Déjà un compte ? Se connecter"}
                     </button>
                 </div>
@@ -156,7 +162,6 @@ const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ u
         const check = async () => {
             setIsChecking(true);
             try {
-                // On demande le club ET ses infos
                 const { data } = await supabase
                     .from('club_members')
                     .select('*, clubs(*)')
@@ -164,7 +169,8 @@ const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ u
                     .maybeSingle();
 
                 if (data && data.clubs) {
-                    setExistingClub(data.clubs);
+                    // AU LIEU DE setExistingClub, ON ENVOIE DIRECTEMENT :
+                    onClubJoined(); 
                 }
             } catch (e) {
                 console.error("Erreur check:", e);
@@ -173,7 +179,7 @@ const OnboardingScreen: React.FC<{ user: any, onClubJoined: () => void }> = ({ u
             }
         };
         check();
-    }, [user.id]);
+    }, [user.id, onClubJoined]);
 
     // 2. TA FONCTION DE SÉCURITÉ (Conservée précieusement)
     const ensureProfileExists = async () => {
@@ -378,44 +384,29 @@ export default function App() {
 
   // 2. FETCH CLUB CONTEXT (Strict 1 Club Rule)
   const fetchClubContext = async (userId: string) => {
-    setCheckingMembership(true);
-    try {
-        const { data: memberShips, error } = await supabase
-            .from('club_members')
-            .select('*, clubs(*)')
-            .eq('user_id', userId)
-            .limit(1);
-        
-        if (error) throw error; 
+    setCheckingMembership(true); // Active le petit spinner de vérification
+    
+    const { data: membership } = await supabase
+        .from('club_members')
+        .select('*, clubs(*), profiles(full_name)')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-        if (memberShips && memberShips.length > 0) {
-            const membership = memberShips[0];
-            const club = membership.clubs;
-            
-            // 1. On récupère le profil
-            const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', userId).single();
-            
-            // 2. On met à jour les états
-            setActiveClub(club);
-            setCurrentUserMember({ ...membership, full_name: profile?.full_name || 'Moi' });
-            
-            // --- LE FIX : On force le passage au Dashboard ---
-            setView('dashboard'); 
-            
-            await loadClubData(club.id);
-        } else {
-            // Pas de club -> On force l'onboarding
-            setActiveClub(null);
-            setCurrentUserMember(null);
-            setView('onboarding'); // Sécurité pour ne pas rester sur Landing
-        }
-    } catch (e) {
-        console.error("Error fetching context:", e);
-        // Si erreur RLS (récursion), l'app reste bloquée ici
-    } finally {
-        setCheckingMembership(false);
+    if (membership && membership.clubs) {
+        // L'utilisateur a un club -> On charge les données et on l'envoie au Dashboard
+        setActiveClub(membership.clubs);
+        setCurrentUserMember({ 
+            ...membership, 
+            full_name: membership.profiles?.full_name || 'Utilisateur' 
+        });
+        await loadClubData(membership.clubs.id);
+        setView('dashboard'); 
+    } else {
+        // Pas de club -> On l'envoie sur l'écran Créer / Rejoindre
+        setView('onboarding');
     }
-};
+    setCheckingMembership(false);
+  };
 
   const loadClubData = async (clubId: string) => {
       const { data: m } = await supabase.from('club_members').select('*, profiles(full_name)').eq('club_id', clubId);
@@ -493,15 +484,30 @@ const handleManualAddMember = async (name: string, email: string) => {
     setIsLoading(true);
     try {
         const fakeId = crypto.randomUUID();
-        // Créer un profil et un membre
-        await supabase.from('profiles').insert({ id: fakeId, full_name: name, email: email });
-        await supabase.from('club_members').insert({
-            club_id: activeClub.id, user_id: fakeId, role: 'member', shares_owned: 0, total_invested_fiat: 0
+        // 1. Création du profil
+        await supabase.from('profiles').insert({ 
+            id: fakeId, 
+            full_name: name, 
+            email: email || `${name.toLowerCase()}@club.internal` 
         });
+        
+        // 2. Ajout au club
+        await supabase.from('club_members').insert({
+            club_id: activeClub.id,
+            user_id: fakeId,
+            role: 'member',
+            shares_owned: 0,
+            total_invested_fiat: 0
+        });
+
         await loadClubData(activeClub.id);
         setModal({ type: null });
-    } catch (e: any) { alert(e.message); } finally { setIsLoading(false); }
-};
+    } catch (e: any) { 
+        alert("Erreur lors de l'ajout : " + e.message); 
+    } finally { 
+        setIsLoading(false); 
+    }
+  };
 
 const handleDeposit = async (memberId: string, amountStr: string) => {
     const amount = parseFloat(amountStr);
@@ -513,28 +519,45 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
 
     try {
         if (memberId === 'ALL') {
+            // Mise à jour de chaque membre de l'équipe
             for (const m of members) {
+                const currentShares = Number(m.shares_owned) || 0;
+                const currentInvested = Number(m.total_invested_fiat) || 0;
+
                 await supabase.from('club_members').update({ 
-                    shares_owned: (Number(m.shares_owned) || 0) + sharesToAdd,
-                    total_invested_fiat: (Number(m.total_invested_fiat) || 0) + amount 
+                    shares_owned: currentShares + sharesToAdd,
+                    total_invested_fiat: currentInvested + amount 
                 }).eq('id', m.id);
-                
+
                 await supabase.from('transactions').insert({
-                    club_id: activeClub.id, user_id: m.user_id, type: 'DEPOSIT',
-                    amount_fiat: amount, shares_change: sharesToAdd, price_at_transaction: currentNav
+                    club_id: activeClub.id,
+                    user_id: m.user_id,
+                    type: 'DEPOSIT',
+                    amount_fiat: amount,
+                    shares_change: sharesToAdd,
+                    price_at_transaction: currentNav
                 });
             }
+            
+            // Mise à jour du cash balance du club
+            const newClubCash = (Number(activeClub.cash_balance) || 0) + (amount * members.length);
+            const newClubShares = (Number(activeClub.total_shares) || 0) + (sharesToAdd * members.length);
+            
             await supabase.from('clubs').update({ 
-                cash_balance: (Number(activeClub.cash_balance) || 0) + (amount * members.length),
-                total_shares: (Number(activeClub.total_shares) || 0) + (sharesToAdd * members.length)
+                cash_balance: newClubCash,
+                total_shares: newClubShares
             }).eq('id', activeClub.id);
-        } else {
-            // Logique individuelle similaire ici...
         }
+        
         await loadClubData(activeClub.id);
         setModal({ type: null });
-    } catch (e: any) { alert(e.message); } finally { setIsLoading(false); }
-};
+    } catch (e: any) { 
+        console.error(e);
+        alert("Erreur de dépôt : " + e.message); 
+    } finally { 
+        setIsLoading(false); 
+    }
+  };
 
   const handleTrade = async (ticker: string, qtyStr: string, priceStr: string) => {
       setErrorMsg(null);
@@ -626,73 +649,78 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
 
   // --- RENDERING ROUTER ---
 
-  // 1. Loading Supabase Session
-  if (loadingSession) return <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-white">Chargement...</div>;
-
-  // 2. Not Authenticated
-  if (!session) return <AuthScreen onAuthSuccess={() => {}} />;
-
-  // 3. Authenticated but checking if user belongs to a club
-  if (checkingMembership) return (
-    <div className="flex flex-col items-center justify-center h-screen bg-slate-50 dark:bg-black p-4">
-        <div className="w-12 h-12 border-4 border-slate-200 dark:border-slate-800 border-t-slate-900 dark:border-t-white rounded-full animate-spin mb-4"></div>
-        <p className="text-slate-500 font-medium animate-pulse">Vérification de l'adhésion...</p>
-    </div>
-  );
-
-  //
-    // 4. ÉCRAN D'ACCUEIL (Landing Page - Design Apple Dark)
-    if (view === 'landing') {
+  // 1. Chargement de la session (Spinner initial)
+  if (loadingSession) {
     return (
-        <div className="h-screen bg-black flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-700">
+      <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-white">
+        Initialisation...
+      </div>
+    );
+  }
+
+  // 2. ÉCRAN D'ACCUEIL (Landing Page)
+  // On l'affiche en priorité si la vue est 'landing' (même si pas de session)
+  if (view === 'landing') {
+    return (
+      <div className="h-screen bg-black flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-700">
         <div className="w-24 h-24 bg-white rounded-full mb-10 flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.1)]">
-            <Icon name="pie" className="w-10 h-10 text-black" />
+          <Icon name="pie" className="w-10 h-10 text-black" />
         </div>
         <h1 className="text-6xl md:text-8xl font-black text-white tracking-tighter mb-6">
-            ClubInvest
+          ClubInvest
         </h1>
         <p className="text-gray-400 max-w-sm mb-12 text-lg leading-relaxed">
-            Le système d'exploitation minimaliste pour les clubs d'investissement modernes.
-            <br/><span className="text-gray-600 text-sm">Suivez la performance. Gérez les membres. Calculez la Quote-part.</span>
+          Le système d'exploitation minimaliste pour les clubs d'investissement modernes.
+          <br/><span className="text-gray-600 text-sm">Suivez la performance. Gérez les membres. Calculez la Quote-part.</span>
         </p>
         <button 
-            onClick={() => {
-                // Si pas de session -> Login
-                if (!session) {
-                setView('auth');
-                } 
-                // Si session mais pas de club -> Créer/Rejoindre
-                else if (!activeClub) {
-                setView('onboarding');
-                } 
-                // Si session + club -> Dashboard
-                else {
-                setView('dashboard');
-                }
-            }}
-            className="bg-white text-black px-12 py-4 rounded-full font-bold text-lg hover:scale-105 transition-transform"
-            >
-            Lancer l'App →
+          onClick={() => {
+            if (!session) setView('auth');
+            else if (!activeClub) setView('onboarding');
+            else setView('dashboard');
+          }}
+          className="bg-white text-black px-12 py-4 rounded-full font-bold text-lg hover:scale-105 transition-transform"
+        >
+          Lancer l'App →
         </button>
-        </div>
+      </div>
     );
-    }
+  }
 
-    // 5. ÉCRAN DE CONNEXION (Stylisé)
-    if (view === 'auth' && !session) {
+  // 3. PAS DE SESSION -> Écran de Connexion
+  if (!session) {
     return (
-        <div className="h-screen bg-black flex flex-col items-center justify-center p-6">
-        <AuthScreen onAuthSuccess={() => setView('onboarding')} />
-        <button onClick={() => setView('landing')} className="mt-8 text-gray-500 hover:text-white transition-colors">Retour à l'accueil</button>
-        </div>
+      <div className="h-screen bg-black flex flex-col items-center justify-center p-6">
+        <AuthScreen 
+          onAuthSuccess={() => {}} 
+          onBack={() => setView('landing')} // FIX : On passe enfin la prop onBack ici !
+        />
+        <button 
+          onClick={() => setView('landing')} 
+          className="mt-8 text-gray-500 hover:text-white transition-colors"
+        >
+          Retour à l'accueil
+        </button>
+      </div>
     );
-    }
+  }
 
-    // 6. Authenticated, No Club Found -> Show Onboarding
-    if (!activeClub) return <OnboardingScreen user={session.user} onClubJoined={() => fetchClubContext(session.user.id)} />;
-  // 5. Authenticated & Member -> Show Dashboard (Strict Mode)
-  // Sidebar & Menu Logic included in return below
+  // 4. SESSION OK -> Vérification de l'adhésion au club (Spinner)
+  if (checkingMembership) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-slate-50 dark:bg-black p-4">
+        <div className="w-12 h-12 border-4 border-slate-200 dark:border-slate-800 border-t-slate-900 dark:border-t-white rounded-full animate-spin mb-4"></div>
+        <p className="text-slate-500 font-medium animate-pulse">Vérification de l'adhésion...</p>
+      </div>
+    );
+  }
 
+  // 5. CONNECTÉ MAIS PAS DE CLUB -> Onboarding
+  if (!activeClub) {
+    return <OnboardingScreen user={session.user} onClubJoined={() => fetchClubContext(session.user.id)} />;
+  }
+
+  // 6. CONNECTÉ + CLUB -> Le Dashboard s'affiche (Code suivant le router)
   // --- DASHBOARD LAYOUT ---
 
   const menuItems = [
@@ -704,7 +732,7 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
 
   return (
     <div className="font-sans transition-colors duration-500 min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-slate-100 md:flex">
-        
+
         {/* ONBOARDING / TUTORIAL */}
         {showTutorial && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
