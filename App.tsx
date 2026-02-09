@@ -409,8 +409,11 @@ export default function App() {
   };
 
   const loadClubData = async (clubId: string) => {
-      const { data: m } = await supabase.from('club_members').select('*, profiles(full_name)').eq('club_id', clubId);
-      const formattedMembers = m?.map((item: any) => ({
+    const { data: club } = await supabase.from('clubs').select('*').eq('id', clubId).single();
+    if (club) setActiveClub(club);
+
+    const { data: m } = await supabase.from('club_members').select('*, profiles(full_name)').eq('club_id', clubId);
+    const formattedMembers = m?.map((item: any) => ({
           ...item,
           full_name: item.profiles?.full_name || 'Inconnu'
       })) || [];
@@ -519,7 +522,7 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
 
     try {
         if (memberId === 'ALL') {
-            // Mise à jour de chaque membre de l'équipe
+            // Mise à jour de CHAQUE membre de l'équipe
             for (const m of members) {
                 const currentShares = Number(m.shares_owned) || 0;
                 const currentInvested = Number(m.total_invested_fiat) || 0;
@@ -539,7 +542,6 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
                 });
             }
             
-            // Mise à jour du cash balance du club
             const newClubCash = (Number(activeClub.cash_balance) || 0) + (amount * members.length);
             const newClubShares = (Number(activeClub.total_shares) || 0) + (sharesToAdd * members.length);
             
@@ -547,15 +549,45 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
                 cash_balance: newClubCash,
                 total_shares: newClubShares
             }).eq('id', activeClub.id);
+
+        } else {
+            // --- C'EST ICI QU'ON AJOUTE LA LOGIQUE POUR UN MEMBRE UNIQUE ---
+            const m = members.find(mem => mem.id === memberId);
+            if (m) {
+                const currentShares = Number(m.shares_owned) || 0;
+                const currentInvested = Number(m.total_invested_fiat) || 0;
+
+                // 1. Update le membre précis
+                await supabase.from('club_members').update({ 
+                    shares_owned: currentShares + sharesToAdd,
+                    total_invested_fiat: currentInvested + amount 
+                }).eq('id', m.id);
+
+                // 2. Créer la transaction pour ce membre
+                await supabase.from('transactions').insert({
+                    club_id: activeClub.id,
+                    user_id: m.user_id,
+                    type: 'DEPOSIT',
+                    amount_fiat: amount,
+                    shares_change: sharesToAdd,
+                    price_at_transaction: currentNav
+                });
+
+                // 3. Update le club avec le montant d'UNE seule personne
+                await supabase.from('clubs').update({ 
+                    cash_balance: (Number(activeClub.cash_balance) || 0) + amount,
+                    total_shares: (Number(activeClub.total_shares) || 0) + sharesToAdd
+                }).eq('id', activeClub.id);
+            }
         }
         
+        // Rafraîchissement global
         await loadClubData(activeClub.id);
         setModal({ type: null });
+        
     } catch (e: any) { 
         console.error(e);
         alert("Erreur de dépôt : " + e.message); 
-    } finally { 
-        setIsLoading(false); 
     }
   };
 
@@ -590,14 +622,31 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
 
   const handleFreeze = async () => {
       if (!activeClub) return;
+      setIsLoading(true); // Optionnel : pour afficher un état de chargement
       try {
+          // 1. Créer le snapshot dans l'historique NAV
           const entry = createNavSnapshot(activeClub.id, portfolioSummary);
-          const { error } = await supabase.from('nav_history').insert(entry);
-          if (error) throw error;
+          const { error: navError } = await supabase.from('nav_history').insert(entry);
+          if (navError) throw navError;
+
+          // 2. Créer l'entrée dans le journal (À l'intérieur du try et AVANT le refresh)
+          const { error: transError } = await supabase.from('transactions').insert({
+              club_id: activeClub.id,
+              type: 'SNAPSHOT', 
+              amount_fiat: portfolioSummary.totalNetAssets,
+              price_at_transaction: portfolioSummary.navPerShare,
+              asset_ticker: 'SNAPSHOT'
+          });
+          if (transError) throw transError;
+
+          // 3. SEULEMENT MAINTENANT on rafraîchit l'interface
           await loadClubData(activeClub.id);
-          alert("Quote-part figée avec succès !");
+          
+          alert("Quote-part figée et enregistrée dans le journal !");
       } catch(e: any) {
           alert("Erreur lors de l'instantané : " + e.message);
+      } finally {
+          setIsLoading(false);
       }
   };
 
