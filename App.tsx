@@ -553,6 +553,8 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
         } else {
             // --- C'EST ICI QU'ON AJOUTE LA LOGIQUE POUR UN MEMBRE UNIQUE ---
             const m = members.find(mem => mem.id === memberId);
+            console.log("ID recherché :", memberId);
+            console.log("Membre trouvé :", m);
             if (m) {
                 const currentShares = Number(m.shares_owned) || 0;
                 const currentInvested = Number(m.total_invested_fiat) || 0;
@@ -578,6 +580,9 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
                     cash_balance: (Number(activeClub.cash_balance) || 0) + amount,
                     total_shares: (Number(activeClub.total_shares) || 0) + sharesToAdd
                 }).eq('id', activeClub.id);
+            }
+            else {
+                alert("Erreur : Le membre sélectionné n'a pas été trouvé dans la liste.");
             }
         }
         
@@ -620,33 +625,27 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
       }
   };
 
-  const handleFreeze = async () => {
+const handleFreeze = async () => {
       if (!activeClub) return;
-      setIsLoading(true); // Optionnel : pour afficher un état de chargement
       try {
-          // 1. Créer le snapshot dans l'historique NAV
           const entry = createNavSnapshot(activeClub.id, portfolioSummary);
-          const { error: navError } = await supabase.from('nav_history').insert(entry);
-          if (navError) throw navError;
+          const { error } = await supabase.from('nav_history').insert(entry);
+          if (error) throw error;
 
-          // 2. Créer l'entrée dans le journal (À l'intérieur du try et AVANT le refresh)
-          const { error: transError } = await supabase.from('transactions').insert({
+          // ON INSÈRE DANS LE JOURNAL ICI (AVANT LOADCLUBDATA)
+          await supabase.from('transactions').insert({
               club_id: activeClub.id,
               type: 'SNAPSHOT', 
               amount_fiat: portfolioSummary.totalNetAssets,
               price_at_transaction: portfolioSummary.navPerShare,
               asset_ticker: 'SNAPSHOT'
           });
-          if (transError) throw transError;
 
-          // 3. SEULEMENT MAINTENANT on rafraîchit l'interface
+          // Maintenant, on recharge tout
           await loadClubData(activeClub.id);
-          
-          alert("Quote-part figée et enregistrée dans le journal !");
+          alert("Quote-part figée avec succès !");
       } catch(e: any) {
           alert("Erreur lors de l'instantané : " + e.message);
-      } finally {
-          setIsLoading(false);
       }
   };
 
