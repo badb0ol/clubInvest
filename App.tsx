@@ -487,6 +487,15 @@ export default function App() {
         return allData.filter(d => new Date(d.date) >= cutoff);
     }, [navHistory, chartRange, portfolioSummary, activeClub]);
 
+    // Per-member portfolio value (must be here, before early returns)
+    const memberValues = useMemo(() => {
+        const nav = portfolioSummary.navPerShare;
+        return members.reduce((acc, m) => {
+            acc[m.id] = m.shares_owned * nav;
+            return acc;
+        }, {} as Record<string, number>);
+    }, [members, portfolioSummary.navPerShare]);
+
     // --- HANDLERS ---
 
     const handleManualAddMember = async () => {
@@ -871,15 +880,6 @@ export default function App() {
         { id: 'journal', label: 'Journal', shortLabel: 'Journal', icon: 'book' },
         { id: 'chat', label: 'Chat', shortLabel: 'Chat', icon: 'chat' },
     ];
-
-    // Per-member portfolio value
-    const memberValues = useMemo(() => {
-        const nav = portfolioSummary.navPerShare;
-        return members.reduce((acc, m) => {
-            acc[m.id] = m.shares_owned * nav;
-            return acc;
-        }, {} as Record<string, number>);
-    }, [members, portfolioSummary.navPerShare]);
 
     return (
         <div className="font-sans transition-colors duration-500 min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-slate-100 md:flex">
