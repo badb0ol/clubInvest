@@ -793,8 +793,6 @@ export default function App() {
         }
     }, [messages, view]);
 
-    const unreadCount = view !== 'chat' ? Math.max(0, messages.length - lastSeenMessageCount) : 0;
-
     // Auto-fetch price when ticker changes in trade modal
     useEffect(() => {
         if (!tradeTicker || tradeTicker.length < 1) return;
@@ -808,6 +806,9 @@ export default function App() {
     }, [tradeTicker]);
 
     const [isConnectingBank, setIsConnectingBank] = useState(false);
+
+    // --- DERIVED STATE (after all hooks) ---
+    const unreadCount = view !== 'chat' ? Math.max(0, messages.length - lastSeenMessageCount) : 0;
 
     // --- RENDERING ---
 
