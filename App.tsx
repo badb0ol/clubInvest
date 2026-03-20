@@ -286,6 +286,7 @@ export default function App() {
     const [memberToKick, setMemberToKick] = useState<Member | null>(null);
     const [isFetchingTradePrice, setIsFetchingTradePrice] = useState(false);
     const [freezeSuccess, setFreezeSuccess] = useState(false);
+    const [isConnectingBank, setIsConnectingBank] = useState(false);
 
     // Chat state
     const [messages, setMessages] = useState<Message[]>([]);
@@ -805,7 +806,6 @@ export default function App() {
         return () => clearTimeout(timeout);
     }, [tradeTicker]);
 
-    const [isConnectingBank, setIsConnectingBank] = useState(false);
 
     // --- DERIVED STATE (after all hooks) ---
     const unreadCount = view !== 'chat' ? Math.max(0, messages.length - lastSeenMessageCount) : 0;
