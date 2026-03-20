@@ -409,24 +409,25 @@ export default function App() {
   };
 
   const loadClubData = async (clubId: string) => {
-    const { data: club } = await supabase.from('clubs').select('*').eq('id', clubId).single();
+    const [
+      { data: club },
+      { data: m },
+      { data: a },
+      { data: t },
+      { data: n }
+    ] = await Promise.all([
+      supabase.from('clubs').select('*').eq('id', clubId).single(),
+      supabase.from('club_members').select('*, profiles(full_name)').eq('club_id', clubId),
+      supabase.from('assets').select('*').eq('club_id', clubId),
+      supabase.from('transactions').select('*').eq('club_id', clubId).order('created_at', { ascending: false }),
+      supabase.from('nav_history').select('*').eq('club_id', clubId).order('date', { ascending: true }),
+    ]);
+
     if (club) setActiveClub(club);
-
-    const { data: m } = await supabase.from('club_members').select('*, profiles(full_name)').eq('club_id', clubId);
-    const formattedMembers = m?.map((item: any) => ({
-          ...item,
-          full_name: item.profiles?.full_name || 'Inconnu'
-      })) || [];
-      setMembers(formattedMembers);
-
-      const { data: a } = await supabase.from('assets').select('*').eq('club_id', clubId);
-      setAssets(a || []);
-
-      const { data: t } = await supabase.from('transactions').select('*').eq('club_id', clubId).order('created_at', { ascending: false });
-      setTransactions(t || []);
-
-      const { data: n } = await supabase.from('nav_history').select('*').eq('club_id', clubId).order('date', { ascending: true });
-      setNavHistory(n || []);
+    setMembers(m?.map((item: any) => ({ ...item, full_name: item.profiles?.full_name || 'Inconnu' })) || []);
+    setAssets(a || []);
+    setTransactions(t || []);
+    setNavHistory(n || []);
   };
 
   // 3. REAL TIME PRICES
@@ -482,33 +483,43 @@ export default function App() {
 
   // --- HANDLERS ---
   
-const handleManualAddMember = async (name: string, email: string) => {
+const handleManualAddMember = async (_name: string, email: string) => {
     if (!activeClub) return;
     setIsLoading(true);
     try {
-        const fakeId = crypto.randomUUID();
-        // 1. Création du profil
-        await supabase.from('profiles').insert({ 
-            id: fakeId, 
-            full_name: name, 
-            email: email || `${name.toLowerCase()}@club.internal` 
-        });
-        
-        // 2. Ajout au club
-        await supabase.from('club_members').insert({
+        // Manual members must be real users - they need to sign up themselves.
+        // Instead, we look up an existing profile by email and add them to the club.
+        const memberEmail = email.trim();
+        if (!memberEmail || !memberEmail.includes('@')) {
+            throw new Error("Un email valide est obligatoire. Le membre doit d'abord créer un compte sur l'app.");
+        }
+
+        // Look up existing profile by email
+        const { data: profile, error: pErr } = await supabase
+            .from('profiles')
+            .select('id, full_name')
+            .eq('email', memberEmail)
+            .maybeSingle();
+
+        if (pErr) throw pErr;
+        if (!profile) throw new Error("Aucun compte trouvé pour cet email. Le membre doit d'abord s'inscrire sur l'app.");
+
+        // Add to club
+        const { error: cmErr } = await supabase.from('club_members').insert({
             club_id: activeClub.id,
-            user_id: fakeId,
+            user_id: profile.id,
             role: 'member',
             shares_owned: 0,
             total_invested_fiat: 0
         });
+        if (cmErr) throw cmErr;
 
         await loadClubData(activeClub.id);
         setModal({ type: null });
-    } catch (e: any) { 
-        alert("Erreur lors de l'ajout : " + e.message); 
-    } finally { 
-        setIsLoading(false); 
+    } catch (e: any) {
+        alert("Erreur lors de l'ajout : " + e.message);
+    } finally {
+        setIsLoading(false);
     }
   };
 
@@ -553,8 +564,6 @@ const handleDeposit = async (memberId: string, amountStr: string) => {
         } else {
             // --- C'EST ICI QU'ON AJOUTE LA LOGIQUE POUR UN MEMBRE UNIQUE ---
             const m = members.find(mem => mem.id === memberId);
-            console.log("ID recherché :", memberId);
-            console.log("Membre trouvé :", m);
             if (m) {
                 const currentShares = Number(m.shares_owned) || 0;
                 const currentInvested = Number(m.total_invested_fiat) || 0;
@@ -1222,13 +1231,12 @@ const handleFreeze = async () => {
         {modal.type === 'addMember' && (
             <Modal isOpen={true} onClose={() => setModal({type:null})} title="Ajouter Membre">
                 <div className="space-y-4">
-                    <Input id="newMemName" placeholder="Nom complet" />
-                    <Input id="newMemEmail" placeholder="Email (facultatif)" />
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Le membre doit d'abord créer un compte sur l'app. Entrez son email de connexion.</p>
+                    <Input id="newMemEmail" type="email" placeholder="Email du membre" />
                     <Button onClick={() => {
-                        const name = (document.getElementById('newMemName') as HTMLInputElement).value;
                         const email = (document.getElementById('newMemEmail') as HTMLInputElement).value;
-                        if(!name) return alert("Le nom est obligatoire");
-                        handleManualAddMember(name, email);
+                        if (!email) return alert("L'email est obligatoire");
+                        handleManualAddMember('', email);
                     }}>
                         {isLoading ? 'Ajout...' : 'Ajouter au club'}
                     </Button>
