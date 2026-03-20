@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch"
+      "WebSearch",
+      "Bash(grep -n \"view === ''portfolio''\\\\|view === ''members''\\\\|view === ''journal''\\\\|view === ''chat''\" \"/c/Users/Clement VENOT/Documents/GitHub/clubInvest/App.tsx\")"
     ]
   }
 }

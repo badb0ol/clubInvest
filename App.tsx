@@ -292,6 +292,7 @@ export default function App() {
     const [chatInput, setChatInput] = useState('');
     const [isSendingMessage, setIsSendingMessage] = useState(false);
     const [isInvitingSending, setIsInvitingSending] = useState(false);
+    const [lastSeenMessageCount, setLastSeenMessageCount] = useState(0);
 
     // --- HELPERS ---
     const notify = (message: string, type: 'success' | 'error' = 'success') => {
@@ -774,13 +775,16 @@ export default function App() {
         }, 1200);
     };
 
-    // Auto-scroll chat to bottom on new messages
+    // Auto-scroll chat to bottom on new messages + track unread
     useEffect(() => {
         if (view === 'chat') {
             const el = document.getElementById('chat-messages');
             if (el) el.scrollTop = el.scrollHeight;
+            setLastSeenMessageCount(messages.length);
         }
     }, [messages, view]);
+
+    const unreadCount = view !== 'chat' ? Math.max(0, messages.length - lastSeenMessageCount) : 0;
 
     // Auto-fetch price when ticker changes in trade modal
     useEffect(() => {
@@ -851,11 +855,11 @@ export default function App() {
     // --- DASHBOARD LAYOUT ---
 
     const menuItems = [
-        { id: 'dashboard', label: 'Tableau de Bord', icon: 'dashboard' },
-        { id: 'portfolio', label: 'Portefeuille', icon: 'pie' },
-        { id: 'members', label: 'Membres', icon: 'users' },
-        { id: 'journal', label: 'Journal', icon: 'book' },
-        { id: 'chat', label: 'Chat', icon: 'chat' },
+        { id: 'dashboard', label: 'Tableau de Bord', shortLabel: 'Accueil', icon: 'dashboard' },
+        { id: 'portfolio', label: 'Portefeuille', shortLabel: 'Actifs', icon: 'pie' },
+        { id: 'members', label: 'Membres', shortLabel: 'Membres', icon: 'users' },
+        { id: 'journal', label: 'Journal', shortLabel: 'Journal', icon: 'book' },
+        { id: 'chat', label: 'Chat', shortLabel: 'Chat', icon: 'chat' },
     ];
 
     // Per-member portfolio value
@@ -915,7 +919,14 @@ export default function App() {
                                 onClick={() => setView(item.id as ViewState)}
                                 className={`w-full text-left px-4 py-3 text-sm font-semibold transition-all flex items-center gap-4 rounded-xl ${view === item.id ? 'bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-900/50'}`}
                             >
-                                <Icon name={item.icon as any} className="w-5 h-5" />
+                                <div className="relative">
+                                    <Icon name={item.icon as any} className="w-5 h-5" />
+                                    {item.id === 'chat' && unreadCount > 0 && (
+                                        <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                                            {unreadCount > 9 ? '9+' : unreadCount}
+                                        </span>
+                                    )}
+                                </div>
                                 {item.label}
                             </button>
                         ))}
@@ -928,7 +939,15 @@ export default function App() {
                     </nav>
                 </div>
                 <div className="p-10 space-y-4">
-                    <div className="text-xs text-slate-400 dark:text-slate-600 font-mono truncate">{currentUserMember?.full_name}</div>
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 shrink-0">
+                            {currentUserMember?.full_name?.charAt(0)?.toUpperCase() || '?'}
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">{currentUserMember?.full_name}</div>
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{currentUserMember?.role === 'admin' ? 'Administrateur' : 'Membre'}</div>
+                        </div>
+                    </div>
                     <button onClick={() => setDarkMode(!darkMode)} className="flex items-center gap-3 text-sm font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors">
                         <Icon name={darkMode ? 'sun' : 'moon'} className="w-5 h-5" />
                         {darkMode ? 'Mode Clair' : 'Mode Sombre'}
@@ -955,21 +974,28 @@ export default function App() {
 
             {/* MOBILE BOTTOM NAV */}
             <nav className="md:hidden fixed bottom-0 w-full z-50 bg-white/90 dark:bg-black/90 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 pb-safe">
-                <div className="flex justify-around items-center p-2">
+                <div className="flex items-center px-1 py-1">
                     {menuItems.map(item => (
                         <button
                             key={item.id}
                             onClick={() => setView(item.id as ViewState)}
-                            className={`flex flex-col items-center justify-center p-2 rounded-xl w-full transition-all ${view === item.id ? 'text-slate-900 dark:text-white scale-105' : 'text-slate-400 dark:text-slate-600'}`}
+                            className={`flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all ${view === item.id ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}
                         >
-                            <Icon name={item.icon as any} className={`w-6 h-6 mb-1 ${view === item.id ? 'stroke-[2.5px]' : ''}`} />
-                            <span className="text-[10px] font-bold">{item.label.split(' ')[0]}</span>
+                            <div className="relative mb-0.5">
+                                <Icon name={item.icon as any} className={`w-5 h-5 ${view === item.id ? 'stroke-[2.5px]' : ''}`} />
+                                {item.id === 'chat' && unreadCount > 0 && (
+                                    <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                                        {unreadCount > 9 ? '9+' : unreadCount}
+                                    </span>
+                                )}
+                            </div>
+                            <span className="text-[9px] font-bold leading-none">{item.shortLabel}</span>
                         </button>
                     ))}
                     {isAdmin && (
-                        <button onClick={() => setView('admin')} className={`flex flex-col items-center justify-center p-2 rounded-xl w-full transition-all ${view === 'admin' ? 'text-slate-900 dark:text-white scale-105' : 'text-slate-400 dark:text-slate-600'}`}>
-                            <Icon name="settings" className="w-6 h-6 mb-1" />
-                            <span className="text-[10px] font-bold">Admin</span>
+                        <button onClick={() => setView('admin')} className={`flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all ${view === 'admin' ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}>
+                            <Icon name="settings" className="w-5 h-5 mb-0.5" />
+                            <span className="text-[9px] font-bold leading-none">Admin</span>
                         </button>
                     )}
                 </div>
@@ -1336,20 +1362,33 @@ export default function App() {
 
                     {/* CHAT VIEW */}
                     {view === 'chat' && (
-                        <div className="flex flex-col h-[calc(100vh-200px)] md:h-[calc(100vh-120px)] max-h-[800px]">
-                            {/* Announcements pinned at top */}
+                        <div className="flex flex-col h-[calc(100vh-260px)] md:h-[calc(100vh-160px)] max-h-[720px] bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+
+                            {/* Header */}
+                            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
+                                <div>
+                                    <h3 className="font-bold text-slate-900 dark:text-white">Chat du club</h3>
+                                    <p className="text-xs text-slate-400 mt-0.5">{members.length} membre{members.length > 1 ? 's' : ''} · temps réel</p>
+                                </div>
+                                {isAdmin && (
+                                    <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-full font-semibold">
+                                        Admin · Annonces activées
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Announcements pinned */}
                             {messages.filter(m => m.type === 'announcement').length > 0 && (
-                                <div className="mb-4 space-y-2">
-                                    {messages.filter(m => m.type === 'announcement').slice(-3).map(a => {
-                                        const authorName = members.find(m => m.user_id === a.user_id)?.full_name || 'Admin';
+                                <div className="px-4 pt-3 space-y-2 shrink-0">
+                                    {messages.filter(m => m.type === 'announcement').slice(-2).map(a => {
+                                        const authorName = members.find(mb => mb.user_id === a.user_id)?.full_name || 'Admin';
                                         return (
-                                            <div key={a.id} className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-2xl">
-                                                <span className="text-lg shrink-0">📣</span>
+                                            <div key={a.id} className="flex items-start gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-2xl">
+                                                <span className="shrink-0 mt-0.5">📣</span>
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Annonce</span>
-                                                        <span className="text-xs text-slate-400">{authorName}</span>
-                                                        <span className="text-xs text-slate-400">{new Date(a.created_at).toLocaleDateString('fr-FR')}</span>
+                                                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                                                        <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Annonce</span>
+                                                        <span className="text-[11px] text-slate-400">{authorName} · {new Date(a.created_at).toLocaleDateString('fr-FR')}</span>
                                                     </div>
                                                     <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">{a.content}</p>
                                                 </div>
@@ -1360,32 +1399,34 @@ export default function App() {
                             )}
 
                             {/* Messages list */}
-                            <div className="flex-1 overflow-y-auto space-y-3 pb-4 pr-1" id="chat-messages">
+                            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" id="chat-messages">
                                 {messages.filter(m => m.type === 'message').length === 0 && (
-                                    <div className="h-full flex items-center justify-center text-slate-400 text-sm">
-                                        Pas encore de messages. Dites bonjour !
+                                    <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
+                                        <Icon name="chat" className="w-8 h-8 opacity-30" />
+                                        <p className="text-sm">Pas encore de messages.</p>
+                                        <p className="text-xs text-slate-300 dark:text-slate-600">Dites bonjour au club !</p>
                                     </div>
                                 )}
                                 {messages.filter(m => m.type === 'message').map(msg => {
                                     const isMe = msg.user_id === session?.user.id;
-                                    const authorName = members.find(m => m.user_id === msg.user_id)?.full_name || 'Membre';
+                                    const authorName = members.find(mb => mb.user_id === msg.user_id)?.full_name || 'Membre';
                                     const initials = authorName.charAt(0).toUpperCase();
                                     return (
                                         <div key={msg.id} className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                                             {!isMe && (
-                                                <div className="w-7 h-7 shrink-0 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                                                <div className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                                                     {initials}
                                                 </div>
                                             )}
-                                            <div className={`max-w-[75%] ${isMe ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
-                                                {!isMe && <span className="text-[11px] text-slate-400 px-2">{authorName}</span>}
-                                                <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${isMe
-                                                    ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-br-sm'
-                                                    : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-100 dark:border-slate-700 rounded-bl-sm'
+                                            <div className={`max-w-[72%] flex flex-col gap-0.5 ${isMe ? 'items-end' : 'items-start'}`}>
+                                                {!isMe && <span className="text-[11px] text-slate-400 px-3">{authorName}</span>}
+                                                <div className={`px-4 py-2.5 text-sm leading-relaxed ${isMe
+                                                    ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-2xl rounded-br-sm'
+                                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white rounded-2xl rounded-bl-sm'
                                                 }`}>
                                                     {msg.content}
                                                 </div>
-                                                <span className="text-[10px] text-slate-300 dark:text-slate-600 px-2">
+                                                <span className="text-[10px] text-slate-300 dark:text-slate-600 px-3">
                                                     {new Date(msg.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                             </div>
@@ -1394,45 +1435,40 @@ export default function App() {
                                 })}
                             </div>
 
-                            {/* Input */}
-                            <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
+                            {/* Input bar */}
+                            <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
                                 <div className="flex gap-2 items-end">
-                                    <div className="flex-1 relative">
-                                        <textarea
-                                            value={chatInput}
-                                            onChange={e => setChatInput(e.target.value)}
-                                            onKeyDown={e => {
-                                                if (e.key === 'Enter' && !e.shiftKey) {
-                                                    e.preventDefault();
-                                                    handleSendMessage('message');
-                                                }
-                                            }}
-                                            placeholder="Écrire un message..."
-                                            rows={1}
-                                            className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border-none outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white resize-none text-sm"
-                                        />
-                                    </div>
+                                    <textarea
+                                        value={chatInput}
+                                        onChange={e => setChatInput(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handleSendMessage('message');
+                                            }
+                                        }}
+                                        placeholder="Écrire un message... (Entrée pour envoyer)"
+                                        rows={1}
+                                        className="flex-1 px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border-none outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white resize-none text-sm"
+                                    />
                                     <Button
                                         onClick={() => handleSendMessage('message')}
                                         disabled={isSendingMessage || !chatInput.trim()}
                                         className="h-11 px-5 shrink-0"
                                     >
-                                        Envoyer
+                                        {isSendingMessage ? '...' : '↑'}
                                     </Button>
                                     {isAdmin && (
                                         <Button
                                             variant="outline"
                                             onClick={() => handleSendMessage('announcement')}
                                             disabled={isSendingMessage || !chatInput.trim()}
-                                            className="h-11 px-4 shrink-0 text-amber-600 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                                            className="h-11 px-4 shrink-0 text-amber-600 border-amber-200 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
                                         >
                                             📣
                                         </Button>
                                     )}
                                 </div>
-                                {isAdmin && (
-                                    <p className="text-[11px] text-slate-400 mt-1.5 px-1">Entrée pour envoyer · 📣 pour épingler comme annonce</p>
-                                )}
                             </div>
                         </div>
                     )}
