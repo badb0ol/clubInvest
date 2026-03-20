@@ -47,24 +47,24 @@ const GUIDE_SECTIONS = [
         emoji: '🏛️',
         title: 'Cadre légal en France',
         content: [
-            'Maximum 20 membres par club d\'investissement.',
-            'Cotisation annuelle limitée à 5 500 € par foyer fiscal (limite légale).',
-            'Le club fonctionne en indivision : chaque membre est copropriétaire au prorata de ses parts.',
-            'Un gérant (admin) est désigné pour passer les ordres et tenir la comptabilité.',
+            'Un club d\'investissement est une structure informelle de copropriété (indivision) entre ses membres.',
+            'Le nombre maximum de membres est généralement fixé à 20 — vérifiez les textes en vigueur pour votre situation.',
+            'Un gérant (admin) est désigné pour passer les ordres, tenir la comptabilité et animer les réunions.',
             'Le club ne peut ni emprunter ni contracter de dettes.',
-            'Les investissements doivent porter sur des valeurs mobilières cotées (actions, ETF, obligations…).',
+            'Les investissements doivent porter sur des valeurs mobilières cotées (actions, ETF, obligations).',
+            'Il est fortement recommandé de rédiger une convention entre membres précisant les règles de fonctionnement, d\'entrée et de sortie.',
         ]
     },
     {
         emoji: '📋',
         title: 'Fiscalité — ce que vous devez déclarer',
         content: [
-            'Le club est fiscalement transparent : il n\'est pas imposable en lui-même. Chaque membre déclare sa quote-part.',
-            'Plus-values : soumises au PFU (Prélèvement Forfaitaire Unique) de 30 % = 12,8 % d\'IR + 17,2 % de prélèvements sociaux.',
-            'Option possible pour le barème progressif si votre tranche marginale d\'imposition est inférieure à 12,8 %.',
-            'Dividendes perçus par le club : également soumis au PFU de 30 %.',
-            'Chaque année, le club émet un IFU (Imprimé Fiscal Unique) / formulaire 2561 que chaque membre utilise pour sa déclaration personnelle.',
-            'ClubInvest calcule une provision fiscale automatique à chaque vente (30 % sur la plus-value réalisée) pour que vous ne soyez pas surpris.',
+            'Le club est fiscalement transparent : il n\'est pas imposable en lui-même. Chaque membre déclare sa quote-part à titre personnel.',
+            'Plus-values et dividendes : soumis au PFU (Prélèvement Forfaitaire Unique) de 31,4 % = 12,8 % d\'IR + 18,2 % de prélèvements sociaux (taux en vigueur depuis la LFI 2025).',
+            'Option possible pour le barème progressif de l\'IR — à envisager si votre tranche marginale est inférieure à 12,8 %.',
+            'Chaque année, le gérant du club établit un IFU (Imprimé Fiscal Unique) / formulaire 2561 que chaque membre utilise pour sa déclaration personnelle.',
+            'ClubInvest calcule une provision fiscale automatique à chaque vente (31,4 % sur la plus-value réalisée) pour que vous ne soyez pas surpris.',
+            '⚠️ Les règles fiscales évoluent. Consultez un conseiller fiscal ou l\'administration fiscale (impots.gouv.fr) pour votre situation.',
         ]
     },
     {
@@ -76,19 +76,18 @@ const GUIDE_SECTIONS = [
             'Diversification accrue : avec plus de capital, vous pouvez répartir sur plus de lignes.',
             'Apprentissage collectif : chacun apporte son analyse, ses idées, et son domaine d\'expertise.',
             'Discipline de groupe : les décisions collégiales évitent les coups de tête émotionnels.',
-            'Limite légale de 5 500 €/an/foyer — une contrainte qui encourage un investissement régulier et discipliné.',
+            'Cadre structuré : la tenue d\'une comptabilité (NAV, journal des opérations) force une rigueur bénéfique à tous.',
         ]
     },
     {
         emoji: '🏦',
-        title: 'Bourse Direct — le courtier recommandé pour les clubs',
+        title: 'Bourse Direct — le courtier pour les clubs',
         content: [
-            'Bourse Direct est l\'un des rares courtiers français à proposer des comptes-titres au nom d\'un club d\'investissement.',
-            'Frais parmi les plus compétitifs du marché français — voir le barème à jour sur boursedirect.fr.',
-            'Pas de frais de tenue de compte sous certaines conditions d\'activité.',
-            'Compatible avec les règles légales des clubs (compte collectif indivis).',
-            'Possibilité de passer des ordres sur Euronext, ETF, marchés américains (NYSE/NASDAQ).',
-            'Astuce : centralisez les virements sur un compte courant du club, puis faites un unique virement vers Bourse Direct pour minimiser les frais.',
+            'Bourse Direct est l\'un des rares courtiers français à proposer des comptes-titres ouverts au nom d\'un club d\'investissement (compte collectif indivis).',
+            'Frais de courtage parmi les plus compétitifs du marché — consultez le barème à jour directement sur boursedirect.fr.',
+            'Accès aux marchés Euronext (Paris, Amsterdam, Bruxelles), ETF, et marchés américains (NYSE, NASDAQ).',
+            'Astuce : centralisez les virements des membres sur un compte courant commun, puis faites un unique virement vers Bourse Direct.',
+            'D\'autres courtiers proposent des comptes clubs : Fortuneo, Saxo, Interactive Brokers. Comparez les frais selon votre volume d\'activité.',
         ]
     },
     {
@@ -100,7 +99,7 @@ const GUIDE_SECTIONS = [
             'Voter collectivement avant chaque achat/vente — ClubInvest enregistre l\'historique dans le Journal.',
             'Définir ensemble un horizon d\'investissement (long terme, 5+ ans recommandé pour les actions).',
             'Éviter les titres non cotés, les cryptomonnaies et les produits dérivés (hors cadre légal des clubs).',
-            'Ces informations sont données à titre indicatif. Consultez un conseiller fiscal ou juridique pour votre situation personnelle.',
+            'Organisez une réunion annuelle pour approuver les comptes, élire le gérant et décider des orientations.',
         ]
     },
 ];
