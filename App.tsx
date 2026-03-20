@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, ResponsiveContainer, YAxis, Tooltip, XAxis, CartesianGrid } from 'recharts';
-import { Club, Member, Asset, Transaction, NavEntry, PortfolioSummary } from './types';
+import { Club, Member, Asset, Transaction, NavEntry, PortfolioSummary, Message } from './types';
 import { fetchAssetPrice, convertCurrency } from './services/financeEngine';
 import { generateInviteCode, calculatePortfolioState, executeBuyOrder, executeSellOrder, executeWithdrawal, createNavSnapshot } from './services/ClubManager';
 import { analyzePortfolioDistribution } from './services/geminiService';
@@ -18,7 +18,7 @@ const AVAILABLE_BANKS = [
 ];
 
 type TimeRange = '1J' | '1S' | '1M' | '1A' | 'MAX';
-type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' | 'members' | 'journal' | 'admin';
+type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' | 'members' | 'journal' | 'chat' | 'admin';
 type ModalType = 'addMember' | 'deposit' | 'trade' | 'connectBank' | 'withdraw' | 'kickConfirm' | null;
 
 // --- INLINE NOTIFICATION ---
@@ -287,6 +287,12 @@ export default function App() {
     const [isFetchingTradePrice, setIsFetchingTradePrice] = useState(false);
     const [freezeSuccess, setFreezeSuccess] = useState(false);
 
+    // Chat state
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [chatInput, setChatInput] = useState('');
+    const [isSendingMessage, setIsSendingMessage] = useState(false);
+    const [isInvitingSending, setIsInvitingSending] = useState(false);
+
     // --- HELPERS ---
     const notify = (message: string, type: 'success' | 'error' = 'success') => {
         setNotification({ message, type });
@@ -395,6 +401,37 @@ export default function App() {
         setTransactions(t || []);
         setNavHistory(n || []);
     };
+
+    // --- LOAD MESSAGES ---
+    const loadMessages = async (clubId: string) => {
+        const { data } = await supabase
+            .from('messages')
+            .select('*')
+            .eq('club_id', clubId)
+            .order('created_at', { ascending: true })
+            .limit(100);
+        setMessages(data || []);
+    };
+
+    // --- REALTIME CHAT SUBSCRIPTION ---
+    useEffect(() => {
+        if (!activeClub) return;
+        loadMessages(activeClub.id);
+
+        const channel = supabase
+            .channel(`messages:${activeClub.id}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'messages',
+                filter: `club_id=eq.${activeClub.id}`,
+            }, (payload) => {
+                setMessages(prev => [...prev, payload.new as Message]);
+            })
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
+    }, [activeClub?.id]);
 
     // --- REAL TIME PRICES (parallelized) ---
     useEffect(() => {
@@ -669,6 +706,44 @@ export default function App() {
         setIsAnalyzing(false);
     };
 
+    const handleSendMessage = async (type: 'message' | 'announcement') => {
+        if (!activeClub || !session || !chatInput.trim()) return;
+        setIsSendingMessage(true);
+        const { error } = await supabase.from('messages').insert({
+            club_id: activeClub.id,
+            user_id: session.user.id,
+            content: chatInput.trim(),
+            type,
+        });
+        if (error) notify("Erreur : " + error.message, 'error');
+        else setChatInput('');
+        setIsSendingMessage(false);
+    };
+
+    const handleSendInvite = async () => {
+        if (!activeClub || !addMemberEmail.trim()) return;
+        setIsInvitingSending(true);
+        setAddMemberError(null);
+        try {
+            const { error } = await supabase.functions.invoke('send-invite', {
+                body: {
+                    to: addMemberEmail.trim(),
+                    inviterName: currentUserMember?.full_name,
+                    clubName: activeClub.name,
+                    inviteCode: activeClub.invite_code,
+                    appUrl: window.location.origin,
+                },
+            });
+            if (error) throw error;
+            closeModal();
+            notify(`Invitation envoyée à ${addMemberEmail.trim()} !`);
+        } catch (e: any) {
+            setAddMemberError("Erreur lors de l'envoi : " + (e.message || 'inconnue'));
+        } finally {
+            setIsInvitingSending(false);
+        }
+    };
+
     const handleKickMember = async () => {
         if (!activeClub || !memberToKick) return;
         setIsLoading(true);
@@ -698,6 +773,14 @@ export default function App() {
             notify(`${name} connecté.`);
         }, 1200);
     };
+
+    // Auto-scroll chat to bottom on new messages
+    useEffect(() => {
+        if (view === 'chat') {
+            const el = document.getElementById('chat-messages');
+            if (el) el.scrollTop = el.scrollHeight;
+        }
+    }, [messages, view]);
 
     // Auto-fetch price when ticker changes in trade modal
     useEffect(() => {
@@ -772,6 +855,7 @@ export default function App() {
         { id: 'portfolio', label: 'Portefeuille', icon: 'pie' },
         { id: 'members', label: 'Membres', icon: 'users' },
         { id: 'journal', label: 'Journal', icon: 'book' },
+        { id: 'chat', label: 'Chat', icon: 'chat' },
     ];
 
     // Per-member portfolio value
@@ -1250,6 +1334,109 @@ export default function App() {
                         </Card>
                     )}
 
+                    {/* CHAT VIEW */}
+                    {view === 'chat' && (
+                        <div className="flex flex-col h-[calc(100vh-200px)] md:h-[calc(100vh-120px)] max-h-[800px]">
+                            {/* Announcements pinned at top */}
+                            {messages.filter(m => m.type === 'announcement').length > 0 && (
+                                <div className="mb-4 space-y-2">
+                                    {messages.filter(m => m.type === 'announcement').slice(-3).map(a => {
+                                        const authorName = members.find(m => m.user_id === a.user_id)?.full_name || 'Admin';
+                                        return (
+                                            <div key={a.id} className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-2xl">
+                                                <span className="text-lg shrink-0">📣</span>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Annonce</span>
+                                                        <span className="text-xs text-slate-400">{authorName}</span>
+                                                        <span className="text-xs text-slate-400">{new Date(a.created_at).toLocaleDateString('fr-FR')}</span>
+                                                    </div>
+                                                    <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed">{a.content}</p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* Messages list */}
+                            <div className="flex-1 overflow-y-auto space-y-3 pb-4 pr-1" id="chat-messages">
+                                {messages.filter(m => m.type === 'message').length === 0 && (
+                                    <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+                                        Pas encore de messages. Dites bonjour !
+                                    </div>
+                                )}
+                                {messages.filter(m => m.type === 'message').map(msg => {
+                                    const isMe = msg.user_id === session?.user.id;
+                                    const authorName = members.find(m => m.user_id === msg.user_id)?.full_name || 'Membre';
+                                    const initials = authorName.charAt(0).toUpperCase();
+                                    return (
+                                        <div key={msg.id} className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                                            {!isMe && (
+                                                <div className="w-7 h-7 shrink-0 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                                                    {initials}
+                                                </div>
+                                            )}
+                                            <div className={`max-w-[75%] ${isMe ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
+                                                {!isMe && <span className="text-[11px] text-slate-400 px-2">{authorName}</span>}
+                                                <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${isMe
+                                                    ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-br-sm'
+                                                    : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-100 dark:border-slate-700 rounded-bl-sm'
+                                                }`}>
+                                                    {msg.content}
+                                                </div>
+                                                <span className="text-[10px] text-slate-300 dark:text-slate-600 px-2">
+                                                    {new Date(msg.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Input */}
+                            <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
+                                <div className="flex gap-2 items-end">
+                                    <div className="flex-1 relative">
+                                        <textarea
+                                            value={chatInput}
+                                            onChange={e => setChatInput(e.target.value)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter' && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    handleSendMessage('message');
+                                                }
+                                            }}
+                                            placeholder="Écrire un message..."
+                                            rows={1}
+                                            className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border-none outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white resize-none text-sm"
+                                        />
+                                    </div>
+                                    <Button
+                                        onClick={() => handleSendMessage('message')}
+                                        disabled={isSendingMessage || !chatInput.trim()}
+                                        className="h-11 px-5 shrink-0"
+                                    >
+                                        Envoyer
+                                    </Button>
+                                    {isAdmin && (
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => handleSendMessage('announcement')}
+                                            disabled={isSendingMessage || !chatInput.trim()}
+                                            className="h-11 px-4 shrink-0 text-amber-600 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                                        >
+                                            📣
+                                        </Button>
+                                    )}
+                                </div>
+                                {isAdmin && (
+                                    <p className="text-[11px] text-slate-400 mt-1.5 px-1">Entrée pour envoyer · 📣 pour épingler comme annonce</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {/* ADMIN VIEW */}
                     {view === 'admin' && (
                         <div className="space-y-6">
@@ -1282,14 +1469,39 @@ export default function App() {
             {/* ===== MODALS ===== */}
 
             {/* ADD MEMBER */}
-            <Modal isOpen={modal.type === 'addMember'} onClose={closeModal} title="Ajouter un Membre">
+            <Modal isOpen={modal.type === 'addMember'} onClose={closeModal} title="Inviter un Membre">
                 <div className="space-y-4">
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Le membre doit d'abord créer un compte sur l'app, puis vous lui fournissez le code d'invitation. Ou entrez son email pour l'ajouter directement.</p>
                     {addMemberError && <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl">{addMemberError}</div>}
-                    <Input type="email" placeholder="Email du membre" value={addMemberEmail} onChange={e => setAddMemberEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleManualAddMember()} />
-                    <Button className="w-full" onClick={handleManualAddMember} disabled={isLoading || !addMemberEmail}>
-                        {isLoading ? 'Recherche...' : 'Ajouter au club'}
+
+                    <Input type="email" placeholder="Email du membre" value={addMemberEmail} onChange={e => setAddMemberEmail(e.target.value)} />
+
+                    {/* Primary CTA: send invite email */}
+                    <Button
+                        className="w-full"
+                        onClick={handleSendInvite}
+                        disabled={isInvitingSending || !addMemberEmail.trim()}
+                    >
+                        {isInvitingSending ? 'Envoi en cours...' : '✉️ Envoyer l\'invitation par email'}
                     </Button>
+
+                    <div className="flex items-center gap-3">
+                        <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
+                        <span className="text-xs text-slate-400">ou</span>
+                        <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
+                    </div>
+
+                    <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
+                        Si le membre a déjà un compte, ajoutez-le directement.
+                    </p>
+                    <Button variant="outline" className="w-full" onClick={handleManualAddMember} disabled={isLoading || !addMemberEmail.trim()}>
+                        {isLoading ? 'Recherche...' : 'Ajouter directement (compte existant)'}
+                    </Button>
+
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs text-slate-500">
+                        <span className="font-bold">Code d'invitation :</span>{' '}
+                        <span className="font-mono font-bold tracking-widest text-slate-900 dark:text-white">{activeClub?.invite_code}</span>
+                        {' '}— partageable aussi par message.
+                    </div>
                 </div>
             </Modal>
 

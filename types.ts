@@ -57,6 +57,16 @@ export interface NavEntry {
   total_net_assets: number;
 }
 
+export interface Message {
+  id: string;
+  club_id: string;
+  user_id: string;
+  user_name?: string; // Resolved client-side
+  content: string;
+  type: 'message' | 'announcement';
+  created_at: string;
+}
+
 export interface PortfolioSummary {
   totalNetAssets: number;
   navPerShare: number;
