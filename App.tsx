@@ -405,13 +405,17 @@ export default function App() {
 
     // --- LOAD MESSAGES ---
     const loadMessages = async (clubId: string) => {
-        const { data } = await supabase
-            .from('messages')
-            .select('*')
-            .eq('club_id', clubId)
-            .order('created_at', { ascending: true })
-            .limit(100);
-        setMessages(data || []);
+        try {
+            const { data, error } = await supabase
+                .from('messages')
+                .select('*')
+                .eq('club_id', clubId)
+                .order('created_at', { ascending: true })
+                .limit(100);
+            if (!error) setMessages(data || []);
+        } catch {
+            // Table may not exist yet — silently ignore
+        }
     };
 
     // --- REALTIME CHAT SUBSCRIPTION ---
@@ -419,19 +423,24 @@ export default function App() {
         if (!activeClub) return;
         loadMessages(activeClub.id);
 
-        const channel = supabase
-            .channel(`messages:${activeClub.id}`)
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'messages',
-                filter: `club_id=eq.${activeClub.id}`,
-            }, (payload) => {
-                setMessages(prev => [...prev, payload.new as Message]);
-            })
-            .subscribe();
+        let channel: ReturnType<typeof supabase.channel> | null = null;
+        try {
+            channel = supabase
+                .channel(`messages:${activeClub.id}`)
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: `club_id=eq.${activeClub.id}`,
+                }, (payload) => {
+                    setMessages(prev => [...prev, payload.new as Message]);
+                })
+                .subscribe();
+        } catch {
+            // Realtime unavailable — chat works in polling-free degraded mode
+        }
 
-        return () => { supabase.removeChannel(channel); };
+        return () => { if (channel) supabase.removeChannel(channel); };
     }, [activeClub?.id]);
 
     // --- REAL TIME PRICES (parallelized) ---
