@@ -18,7 +18,7 @@ const AVAILABLE_BANKS = [
 ];
 
 type TimeRange = '1J' | '1S' | '1M' | '1A' | 'MAX';
-type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' | 'members' | 'journal' | 'chat' | 'admin';
+type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' | 'members' | 'journal' | 'chat' | 'guide' | 'admin';
 type ModalType = 'addMember' | 'deposit' | 'trade' | 'connectBank' | 'withdraw' | 'kickConfirm' | null;
 
 // --- INLINE NOTIFICATION ---
@@ -28,6 +28,121 @@ const Notification: React.FC<{ message: string; type: 'success' | 'error'; onClo
         <button onClick={onClose} className="ml-2 opacity-70 hover:opacity-100 text-lg leading-none">×</button>
     </div>
 );
+
+// --- GUIDE VIEW ---
+const GUIDE_SECTIONS = [
+    {
+        emoji: '📊',
+        title: 'La Quote-Part (NAV) — comment ça marche',
+        content: [
+            'La NAV (Net Asset Value) mesure la valeur nette d\'une part de votre club.',
+            'Formule : (Valeur des actifs + Trésorerie − Provisions fiscales) ÷ Nombre de parts',
+            'Au démarrage, la NAV est fixée à 100 €. Si vous déposez 1 000 € quand la NAV est à 120 €, vous recevez 8,33 parts.',
+            'Votre valeur dans le club = parts détenues × NAV du jour.',
+            'C\'est juste et équitable : chacun entre et sort au prix réel du marché, sans diluer les autres.',
+            'Figez la NAV au moins une fois par mois depuis l\'onglet Admin pour garder un historique propre.',
+        ]
+    },
+    {
+        emoji: '🏛️',
+        title: 'Cadre légal en France',
+        content: [
+            'Maximum 20 membres par club d\'investissement.',
+            'Cotisation annuelle limitée à 5 500 € par foyer fiscal (limite légale).',
+            'Le club fonctionne en indivision : chaque membre est copropriétaire au prorata de ses parts.',
+            'Un gérant (admin) est désigné pour passer les ordres et tenir la comptabilité.',
+            'Le club ne peut ni emprunter ni contracter de dettes.',
+            'Les investissements doivent porter sur des valeurs mobilières cotées (actions, ETF, obligations…).',
+        ]
+    },
+    {
+        emoji: '📋',
+        title: 'Fiscalité — ce que vous devez déclarer',
+        content: [
+            'Le club est fiscalement transparent : il n\'est pas imposable en lui-même. Chaque membre déclare sa quote-part.',
+            'Plus-values : soumises au PFU (Prélèvement Forfaitaire Unique) de 30 % = 12,8 % d\'IR + 17,2 % de prélèvements sociaux.',
+            'Option possible pour le barème progressif si votre tranche marginale d\'imposition est inférieure à 12,8 %.',
+            'Dividendes perçus par le club : également soumis au PFU de 30 %.',
+            'Chaque année, le club émet un IFU (Imprimé Fiscal Unique) / formulaire 2561 que chaque membre utilise pour sa déclaration personnelle.',
+            'ClubInvest calcule une provision fiscale automatique à chaque vente (30 % sur la plus-value réalisée) pour que vous ne soyez pas surpris.',
+        ]
+    },
+    {
+        emoji: '💡',
+        title: 'Pourquoi investir en club plutôt que seul ?',
+        content: [
+            'Ticket d\'entrée réduit : en mettant en commun vos épargnes, vous accédez à des actions ou ETF qui seraient hors de portée individuellement.',
+            'Mutualisation des frais : un seul ordre = un seul frais de courtage, divisé entre tous les membres.',
+            'Diversification accrue : avec plus de capital, vous pouvez répartir sur plus de lignes.',
+            'Apprentissage collectif : chacun apporte son analyse, ses idées, et son domaine d\'expertise.',
+            'Discipline de groupe : les décisions collégiales évitent les coups de tête émotionnels.',
+            'Limite légale de 5 500 €/an/foyer — une contrainte qui encourage un investissement régulier et discipliné.',
+        ]
+    },
+    {
+        emoji: '🏦',
+        title: 'Bourse Direct — le courtier recommandé pour les clubs',
+        content: [
+            'Bourse Direct est l\'un des rares courtiers français à proposer des comptes-titres au nom d\'un club d\'investissement.',
+            'Frais parmi les plus compétitifs du marché français — voir le barème à jour sur boursedirect.fr.',
+            'Pas de frais de tenue de compte sous certaines conditions d\'activité.',
+            'Compatible avec les règles légales des clubs (compte collectif indivis).',
+            'Possibilité de passer des ordres sur Euronext, ETF, marchés américains (NYSE/NASDAQ).',
+            'Astuce : centralisez les virements sur un compte courant du club, puis faites un unique virement vers Bourse Direct pour minimiser les frais.',
+        ]
+    },
+    {
+        emoji: '✅',
+        title: 'Règles de bonne gestion recommandées',
+        content: [
+            'Figer la NAV une fois par mois (onglet Admin) pour maintenir un historique de performance fiable.',
+            'Garder minimum 10–20 % de trésorerie pour saisir les opportunités sans vendre en urgence.',
+            'Voter collectivement avant chaque achat/vente — ClubInvest enregistre l\'historique dans le Journal.',
+            'Définir ensemble un horizon d\'investissement (long terme, 5+ ans recommandé pour les actions).',
+            'Éviter les titres non cotés, les cryptomonnaies et les produits dérivés (hors cadre légal des clubs).',
+            'Ces informations sont données à titre indicatif. Consultez un conseiller fiscal ou juridique pour votre situation personnelle.',
+        ]
+    },
+];
+
+const GuideView: React.FC = () => {
+    const [openIndex, setOpenIndex] = useState<number | null>(0);
+    return (
+        <div className="space-y-3">
+            <div className="mb-6">
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">Guide & Fiscalité</h2>
+                <p className="text-slate-500 dark:text-slate-400 text-sm">Tout ce que votre club doit savoir pour investir sereinement.</p>
+            </div>
+            {GUIDE_SECTIONS.map((section, i) => (
+                <div key={i} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm">
+                    <button
+                        onClick={() => setOpenIndex(openIndex === i ? null : i)}
+                        className="w-full flex items-center gap-4 px-6 py-5 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                    >
+                        <span className="text-2xl">{section.emoji}</span>
+                        <span className="flex-1 font-semibold text-slate-900 dark:text-white text-sm">{section.title}</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`text-slate-400 transition-transform duration-200 ${openIndex === i ? 'rotate-180' : ''}`}>
+                            <path d="M6 9l6 6 6-6" />
+                        </svg>
+                    </button>
+                    {openIndex === i && (
+                        <div className="px-6 pb-6 space-y-3 border-t border-slate-100 dark:border-slate-800 pt-4">
+                            {section.content.map((line, j) => (
+                                <div key={j} className="flex gap-3 text-sm text-slate-600 dark:text-slate-300">
+                                    <span className="text-slate-300 dark:text-slate-600 mt-0.5 shrink-0">—</span>
+                                    <span>{line}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            ))}
+            <p className="text-center text-xs text-slate-400 dark:text-slate-600 pt-2">
+                Informations à titre indicatif · Consultez un conseiller fiscal pour votre situation personnelle
+            </p>
+        </div>
+    );
+};
 
 // --- AUTH SCREEN ---
 const AuthScreen: React.FC<{ onAuthSuccess: () => void; onBack: () => void }> = ({ onAuthSuccess, onBack }) => {
@@ -879,6 +994,7 @@ export default function App() {
         { id: 'members', label: 'Membres', shortLabel: 'Membres', icon: 'users' },
         { id: 'journal', label: 'Journal', shortLabel: 'Journal', icon: 'book' },
         { id: 'chat', label: 'Chat', shortLabel: 'Chat', icon: 'chat' },
+        { id: 'guide', label: 'Guide & Fiscalité', shortLabel: 'Guide', icon: 'guide' },
     ];
 
     return (
@@ -1482,6 +1598,9 @@ export default function App() {
                             </div>
                         </div>
                     )}
+
+                    {/* GUIDE VIEW */}
+                    {view === 'guide' && <GuideView />}
 
                     {/* ADMIN VIEW */}
                     {view === 'admin' && (

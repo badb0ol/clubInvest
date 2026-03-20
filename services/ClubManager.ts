@@ -209,10 +209,10 @@ export const executeSellOrder = (
     // Realized Gain (Plus-value)
     const realizedGain = revenueClubCurrency - costBasisEur;
 
-    // 3. Calculate Tax Liability (31.4% Flat Tax) if there is a gain
+    // 3. Calculate Tax Liability (30% PFU: 12.8% IR + 17.2% PS)
     let taxAmount = 0;
     if (realizedGain > 0) {
-        taxAmount = realizedGain * 0.314;
+        taxAmount = realizedGain * 0.30;
     }
 
     // 4. Update Club Cash and Tax Liability
@@ -288,7 +288,9 @@ export const executeWithdrawal = (
 
   const updatedMember = {
     ...member,
-    shares_owned: member.shares_owned - sharesToBurn
+    shares_owned: member.shares_owned - sharesToBurn,
+    // Reduce invested fiat proportionally so PRU stays correct on future withdrawals
+    total_invested_fiat: member.total_invested_fiat - capitalPortion
   };
 
   // REMOVED user_name to match DB Schema
