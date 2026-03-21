@@ -980,6 +980,17 @@ export default function App() {
                 }).eq('id', activeClub.id);
             }
             await loadClubData(activeClub.id);
+            // Auto-record NAV snapshot for today after deposit
+            try {
+                const newCash = depositMemberId === 'ALL'
+                    ? (Number(activeClub.cash_balance) || 0) + (amount * members.length)
+                    : (Number(activeClub.cash_balance) || 0) + amount;
+                const newShares = depositMemberId === 'ALL'
+                    ? (Number(activeClub.total_shares) || 0) + (sharesToAdd * members.length)
+                    : (Number(activeClub.total_shares) || 0) + sharesToAdd;
+                const newNav = newShares > 0 ? newCash / newShares : currentNav;
+                await autoSnapshot(activeClub.id, newNav, newCash);
+            } catch { /* non-blocking */ }
             closeModal();
             notify(`Dépôt de ${amount.toFixed(2)} € enregistré.`);
         } catch (e: any) {
@@ -1027,6 +1038,7 @@ export default function App() {
                 })
             ]);
             await loadClubData(activeClub.id);
+            try { await autoSnapshot(activeClub.id, updatedClub.total_shares > 0 ? (updatedClub.cash_balance - updatedClub.tax_liability) / updatedClub.total_shares : portfolioSummary.navPerShare, updatedClub.cash_balance - updatedClub.tax_liability); } catch { /* non-blocking */ }
             closeModal();
             notify(`Retrait de ${amount.toFixed(2)} € enregistré.`);
         } catch (e: any) {
@@ -1088,6 +1100,13 @@ export default function App() {
             }
 
             await loadClubData(activeClub.id);
+            // Auto-record NAV snapshot after trade (NAV changes due to P&L)
+            try {
+                const newNetAssets = result.updatedClub.cash_balance - result.updatedClub.tax_liability +
+                    result.updatedAssets.reduce((s, a) => s + a.quantity * (assetPrices[a.ticker] || a.avg_buy_price) * convertCurrency(1, a.currency, activeClub.currency), 0);
+                const newNav = activeClub.total_shares > 0 ? newNetAssets / activeClub.total_shares : portfolioSummary.navPerShare;
+                await autoSnapshot(activeClub.id, newNav, newNetAssets);
+            } catch { /* non-blocking */ }
             closeModal();
             notify(`${tradeType === 'BUY' ? 'Achat' : 'Vente'} de ${qty} ${tradeTicker.toUpperCase()} exécuté.`);
         } catch (e: any) {
@@ -1102,16 +1121,15 @@ export default function App() {
         setIsLoading(true);
         setFreezeSuccess(false);
         try {
-            const entry = createNavSnapshot(activeClub.id, portfolioSummary);
-            const { error } = await supabase.from('nav_history').insert(entry);
-            if (error) throw error;
-            await supabase.from('transactions').insert({
+            const today = new Date().toISOString().split('T')[0];
+            // Upsert: update today's snapshot if already exists, otherwise insert
+            const { error } = await supabase.from('nav_history').upsert({
                 club_id: activeClub.id,
-                type: 'SNAPSHOT',
-                amount_fiat: portfolioSummary.totalNetAssets,
-                price_at_transaction: portfolioSummary.navPerShare,
-                asset_ticker: 'SNAPSHOT'
-            });
+                date: today,
+                nav_per_share: parseFloat(portfolioSummary.navPerShare.toFixed(4)),
+                total_net_assets: parseFloat(portfolioSummary.totalNetAssets.toFixed(2)),
+            }, { onConflict: 'club_id,date' });
+            if (error) throw error;
             await loadClubData(activeClub.id);
             setFreezeSuccess(true);
             notify("Quote-part figée avec succès !");
@@ -1561,6 +1579,26 @@ export default function App() {
             notify(e.message, 'error');
         } finally {
             setIsDissolving(false);
+        }
+    };
+
+    // --- AUTO NAV SNAPSHOT (after financial events) ---
+    const autoSnapshot = async (clubId: string, navPerShare: number, totalNetAssets: number) => {
+        const today = new Date().toISOString().split('T')[0];
+        // Only insert if no snapshot already exists for today
+        const { data: existing } = await supabase
+            .from('nav_history')
+            .select('id')
+            .eq('club_id', clubId)
+            .eq('date', today)
+            .maybeSingle();
+        if (!existing) {
+            await supabase.from('nav_history').insert({
+                club_id: clubId,
+                date: today,
+                nav_per_share: parseFloat(navPerShare.toFixed(4)),
+                total_net_assets: parseFloat(totalNetAssets.toFixed(2)),
+            });
         }
     };
 
