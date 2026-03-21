@@ -18,6 +18,24 @@ const AVAILABLE_BANKS = [
     { id: 'ibkr', name: 'Interactive Brokers', logo: 'I' },
 ];
 
+// Popular instruments for quick-pick in trade modal
+const POPULAR_INSTRUMENTS: Array<{ ticker: string; label: string; currency: 'USD' | 'EUR' }> = [
+    { ticker: 'CW8', label: 'MSCI World', currency: 'EUR' },
+    { ticker: 'IWDA', label: 'World iShares', currency: 'USD' },
+    { ticker: 'SPY', label: 'S&P 500 ETF', currency: 'USD' },
+    { ticker: 'QQQ', label: 'Nasdaq 100', currency: 'USD' },
+    { ticker: 'PANX', label: 'Nasdaq iShares', currency: 'EUR' },
+    { ticker: 'CACX', label: 'CAC 40 ETF', currency: 'EUR' },
+    { ticker: 'AAPL', label: 'Apple', currency: 'USD' },
+    { ticker: 'NVDA', label: 'Nvidia', currency: 'USD' },
+    { ticker: 'MSFT', label: 'Microsoft', currency: 'USD' },
+    { ticker: 'AMZN', label: 'Amazon', currency: 'USD' },
+    { ticker: 'GOOGL', label: 'Alphabet', currency: 'USD' },
+    { ticker: 'MC', label: 'LVMH', currency: 'EUR' },
+    { ticker: 'BRK/B', label: 'Berkshire B', currency: 'USD' },
+    { ticker: 'TTE', label: 'TotalEnergies', currency: 'EUR' },
+];
+
 type TimeRange = '1J' | '1S' | '1M' | '1A' | 'MAX';
 type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' | 'members' | 'journal' | 'chat' | 'guide' | 'votes' | 'admin' | 'analysis' | 'settings';
 type ModalType = 'addMember' | 'deposit' | 'trade' | 'connectBank' | 'withdraw' | 'kickConfirm' | 'resetClub' | null;
@@ -475,39 +493,86 @@ const OnboardingScreen: React.FC<{ user: any; onClubJoined: () => void }> = ({ u
 
     if (isChecking) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-black">
-                <div className="animate-pulse text-emerald-600 font-medium">Recherche de votre club...</div>
+            <div className="flex items-center justify-center min-h-screen bg-zinc-50 dark:bg-black">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-2 border-zinc-200 dark:border-zinc-800 border-t-emerald-500 rounded-full animate-spin" />
+                    <p className="text-zinc-500 text-sm font-medium">Vérification en cours...</p>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 dark:bg-black p-6">
-            <div className="absolute top-8 left-8">
-                <button onClick={() => supabase.auth.signOut()} className="text-gray-500 hover:text-black dark:hover:text-white transition-colors text-sm">← Déconnexion</button>
+        <div className="min-h-screen bg-zinc-50 dark:bg-black relative">
+            <div className="absolute top-6 left-6">
+                <button onClick={() => supabase.auth.signOut()} className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors text-sm">← Déconnexion</button>
             </div>
-            <div className="text-center mb-8">
-                <Logo className="justify-center mb-4" />
-                <p className="text-gray-500 text-sm">Bienvenue, <span className="font-semibold text-slate-900 dark:text-white">{user?.email}</span></p>
-            </div>
-            {error && <div className="mb-6 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl border border-red-100 dark:border-red-800 max-w-lg w-full text-center">{error}</div>}
-            <div className="max-w-4xl w-full grid md:grid-cols-2 gap-8">
-                <Card className="space-y-4">
-                    <h2 className="text-xl font-bold dark:text-white text-center">Créer un Club</h2>
-                    <p className="text-sm text-slate-500 text-center">Vous serez l'administrateur du club.</p>
-                    <Input placeholder="Nom du Club" value={newClubName} onChange={e => setNewClubName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()} />
-                    <Button className="w-full" onClick={handleCreate} disabled={isLoading || !newClubName.trim()}>
-                        {isLoading ? 'Création...' : 'Créer'}
-                    </Button>
-                </Card>
-                <Card className="space-y-4 text-center">
-                    <h2 className="text-xl font-bold dark:text-white">Rejoindre un Club</h2>
-                    <p className="text-sm text-slate-500">Entrez le code à 6 lettres donné par votre admin.</p>
-                    <Input placeholder="CODE" className="text-center font-mono text-2xl uppercase tracking-widest" maxLength={6} value={joinCode} onChange={e => setJoinCode(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleJoin()} />
-                    <Button variant="outline" className="w-full" onClick={handleJoin} disabled={isLoading || joinCode.length < 6}>
-                        {isLoading ? 'Vérification...' : 'Rejoindre'}
-                    </Button>
-                </Card>
+
+            <div className="flex flex-col items-center justify-center min-h-screen p-6 py-20">
+                {/* Header */}
+                <div className="text-center mb-10">
+                    <Logo className="justify-center mb-5" />
+                    <h1 className="text-2xl font-black text-zinc-900 dark:text-white mb-2">Bienvenue sur ClubInvest</h1>
+                    <p className="text-zinc-500 text-sm">Connecté en tant que <span className="font-semibold text-zinc-700 dark:text-zinc-300">{user?.email}</span></p>
+                </div>
+
+                {/* How it works — 3 steps */}
+                <div className="flex flex-col md:flex-row gap-4 max-w-2xl w-full mb-10">
+                    {[
+                        { step: '01', icon: '👥', title: 'Créez ou rejoignez', desc: 'Formez un club entre amis ou collègues. Entre 2 et 20 membres.' },
+                        { step: '02', icon: '💰', title: 'Investissez ensemble', desc: 'Chaque membre dépose, achète et suit sa quote-part en temps réel.' },
+                        { step: '03', icon: '📈', title: 'Suivez la performance', desc: 'Graphiques, analyses IA et comparaison aux grands indices.' },
+                    ].map(s => (
+                        <div key={s.step} className="flex-1 p-5 bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 flex gap-4 items-start">
+                            <span className="text-2xl shrink-0">{s.icon}</span>
+                            <div>
+                                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-0.5">Étape {s.step}</p>
+                                <p className="font-bold text-zinc-900 dark:text-white text-sm mb-1">{s.title}</p>
+                                <p className="text-xs text-zinc-500 leading-relaxed">{s.desc}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {error && <div className="mb-6 p-3 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-sm rounded-xl border border-red-100 dark:border-red-900/50 max-w-lg w-full text-center">{error}</div>}
+
+                {/* Action cards */}
+                <div className="max-w-2xl w-full grid md:grid-cols-2 gap-5">
+                    <Card className="space-y-4 !p-6">
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="w-10 h-10 rounded-2xl bg-zinc-900 dark:bg-white flex items-center justify-center shrink-0">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" className="dark:stroke-zinc-900" strokeWidth="2.5" strokeLinecap="round">
+                                    <path d="M12 5v14M5 12h14" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h2 className="text-base font-bold text-zinc-900 dark:text-white">Créer un club</h2>
+                                <p className="text-xs text-zinc-500">Vous serez administrateur</p>
+                            </div>
+                        </div>
+                        <Input placeholder="Ex : Club des Amis Investisseurs" value={newClubName} onChange={e => setNewClubName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()} />
+                        <Button className="w-full" onClick={handleCreate} disabled={isLoading || !newClubName.trim()}>
+                            {isLoading ? 'Création...' : 'Créer mon club →'}
+                        </Button>
+                    </Card>
+                    <Card className="space-y-4 !p-6">
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="w-10 h-10 rounded-2xl bg-emerald-600 flex items-center justify-center shrink-0">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h2 className="text-base font-bold text-zinc-900 dark:text-white">Rejoindre un club</h2>
+                                <p className="text-xs text-zinc-500">Code d'invitation de votre admin</p>
+                            </div>
+                        </div>
+                        <Input placeholder="XXXXXX" className="text-center font-mono text-2xl uppercase tracking-widest" maxLength={6} value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())} onKeyDown={e => e.key === 'Enter' && handleJoin()} />
+                        <Button variant="outline" className="w-full" onClick={handleJoin} disabled={isLoading || joinCode.length < 6}>
+                            {isLoading ? 'Vérification...' : 'Rejoindre →'}
+                        </Button>
+                    </Card>
+                </div>
             </div>
         </div>
     );
@@ -536,7 +601,11 @@ export default function App() {
 
     // UI State
     const [view, setView] = useState<ViewState>('landing');
-    const [darkMode, setDarkMode] = useState(true);
+    const [darkMode, setDarkMode] = useState(() => {
+        const saved = localStorage.getItem('theme');
+        if (saved) return saved === 'dark';
+        return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    });
     const [modal, setModal] = useState<{ type: ModalType }>({ type: null });
     const [tradeType, setTradeType] = useState<'BUY' | 'SELL'>('BUY');
     const [chartRange, setChartRange] = useState<TimeRange>('1M');
@@ -672,6 +741,7 @@ export default function App() {
     // --- DARK MODE ---
     useEffect(() => {
         document.documentElement.classList.toggle('dark', darkMode);
+        localStorage.setItem('theme', darkMode ? 'dark' : 'light');
     }, [darkMode]);
 
     // --- TUTORIAL ---
@@ -1876,25 +1946,80 @@ export default function App() {
 
     if (view === 'landing') {
         return (
-            <div className="h-screen bg-black flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-700">
-                <div className="w-24 h-24 bg-white rounded-full mb-10 flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.1)]">
-                    <Icon name="pie" className="w-10 h-10 text-black" />
+            <div className="min-h-screen bg-[#0a0a0a] flex flex-col relative overflow-hidden animate-in fade-in duration-700">
+                {/* Subtle radial glow */}
+                <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 0%, rgba(16,185,129,0.08) 0%, transparent 70%)' }} />
+
+                {/* Top bar */}
+                <div className="relative z-10 flex justify-between items-center px-6 py-5 md:px-12">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 bg-white rounded-full flex items-center justify-center">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                <path d="M3 21H21" stroke="#0a0a0a" strokeWidth="2.5" strokeLinecap="round"/>
+                                <path d="M3 16L9 10L13 14L21 6" stroke="#0a0a0a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M21 6V10M21 6H17" stroke="#0a0a0a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                        </div>
+                        <span className="font-bold text-white text-base tracking-tight">ClubInvest</span>
+                    </div>
+                    <button
+                        onClick={() => { if (!session) setView('auth'); else if (!activeClub) setView('onboarding'); else setView('dashboard'); }}
+                        className="text-sm font-semibold text-zinc-400 hover:text-white transition-colors"
+                    >
+                        Se connecter →
+                    </button>
                 </div>
-                <h1 className="text-6xl md:text-8xl font-black text-white tracking-tighter mb-6">ClubInvest</h1>
-                <p className="text-gray-400 max-w-sm mb-12 text-lg leading-relaxed">
-                    Le système d'exploitation minimaliste pour les clubs d'investissement modernes.
-                    <br /><span className="text-gray-600 text-sm">Suivez la performance. Gérez les membres. Calculez la Quote-part.</span>
-                </p>
-                <button
-                    onClick={() => {
-                        if (!session) setView('auth');
-                        else if (!activeClub) setView('onboarding');
-                        else setView('dashboard');
-                    }}
-                    className="bg-white text-black px-12 py-4 rounded-full font-bold text-lg hover:scale-105 transition-transform"
-                >
-                    Lancer l'App →
-                </button>
+
+                {/* Hero */}
+                <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-6 py-16">
+                    {/* Status pill */}
+                    <div className="mb-8 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="text-emerald-400 text-xs font-semibold tracking-widest uppercase">Pour clubs d'investissement · France</span>
+                    </div>
+
+                    <h1 className="text-5xl sm:text-7xl md:text-8xl font-black text-white tracking-tighter leading-none mb-6">
+                        Investissez<br />
+                        <span className="text-transparent bg-clip-text" style={{ backgroundImage: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)' }}>ensemble.</span>
+                    </h1>
+
+                    <p className="text-zinc-400 max-w-md mb-4 text-lg leading-relaxed">
+                        La plateforme complète pour gérer votre club : quote-parts, portefeuille, votes, chat et analyses IA.
+                    </p>
+                    <p className="text-zinc-600 text-sm mb-12 max-w-sm">Report d'imposition · PFU 31,4 % calculé · Benchmark S&P 500 & CAC 40</p>
+
+                    {/* Feature pills */}
+                    <div className="flex flex-wrap justify-center gap-2 mb-12 max-w-lg">
+                        {[
+                            { icon: '📈', label: 'NAV en temps réel' },
+                            { icon: '✨', label: 'Analyse IA Gemini' },
+                            { icon: '🗳️', label: 'Votes & Propositions' },
+                            { icon: '💬', label: 'Chat temps réel' },
+                            { icon: '⚖️', label: 'Fiscalité automatique' },
+                            { icon: '📊', label: 'Graphiques performance' },
+                        ].map(f => (
+                            <span key={f.label} className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-full text-xs font-medium text-zinc-400">
+                                <span>{f.icon}</span>{f.label}
+                            </span>
+                        ))}
+                    </div>
+
+                    {/* CTA */}
+                    <button
+                        onClick={() => { if (!session) setView('auth'); else if (!activeClub) setView('onboarding'); else setView('dashboard'); }}
+                        className="group relative px-10 py-4 rounded-full font-bold text-base bg-white text-black hover:bg-zinc-100 active:scale-95 transition-all shadow-2xl shadow-white/10"
+                    >
+                        Commencer gratuitement
+                        <span className="ml-2 group-hover:translate-x-1 inline-block transition-transform">→</span>
+                    </button>
+                    <p className="mt-4 text-xs text-zinc-700">Gratuit · Aucune carte bancaire requise</p>
+                </div>
+
+                {/* Bottom footer */}
+                <div className="relative z-10 border-t border-zinc-900 px-6 py-4 flex justify-between items-center">
+                    <span className="text-zinc-700 text-xs">© 2025 ClubInvest</span>
+                    <span className="text-zinc-700 text-xs">Données à titre indicatif · Pas de conseil financier</span>
+                </div>
             </div>
         );
     }
@@ -1929,7 +2054,7 @@ export default function App() {
     const unreadNotifCount = appNotifications.filter(n => !n.read).length;
 
     return (
-        <div className="font-sans transition-colors duration-500 min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-slate-100 md:flex">
+        <div className="font-sans transition-colors duration-500 min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 md:flex">
 
             {/* NOTIFICATION */}
             {notification && (
@@ -2258,67 +2383,97 @@ export default function App() {
                             )}
 
                             {/* Chart */}
-                            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 md:p-8 shadow-sm">
-                                <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-                                    <div className="flex items-center gap-2">
-                                        <h3 className="font-bold text-lg text-slate-900 dark:text-white">Historique Quote-part</h3>
-                                        <button onClick={() => setHelpTopic('nav')} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 w-4 h-4 rounded-full border flex items-center justify-center border-current text-[10px]">?</button>
-                                    </div>
-                                    <div className="flex items-center gap-3 flex-wrap">
-                                    <div className="flex gap-1">
-                                        {(['SPY', '^FCHI'] as const).map(sym => (
-                                            <button key={sym} onClick={() => setBenchmarkSymbol(benchmarkSymbol === sym ? null : sym)}
-                                                className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${benchmarkSymbol === sym ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-400'}`}>
-                                                {isFetchingBenchmark && benchmarkSymbol === sym ? '...' : `vs ${sym === '^FCHI' ? 'CAC 40' : 'S&P 500'}`}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
-                                        {(['1J', '1S', '1M', '1A', 'MAX'] as TimeRange[]).map(r => (
-                                            <button
-                                                key={r}
-                                                onClick={() => setChartRange(r)}
-                                                className={`text-xs font-bold px-3 py-1.5 rounded-md transition-all ${chartRange === r ? 'bg-white dark:bg-slate-600 shadow-sm text-slate-900 dark:text-white' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'}`}
-                                            >
-                                                {r}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="h-[250px] md:h-[320px] w-full">
-                                    {filteredHistory.length <= 1 ? (
-                                        <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
-                                            <p className="text-sm">Pas encore de données historiques.</p>
-                                            {isAdmin && <p className="text-xs">Utilisez "Figer la Quote-part" dans Admin pour créer un premier point.</p>}
+                            {(() => {
+                                const firstNav = filteredHistory.length > 1 ? filteredHistory[0].nav_per_share : null;
+                                const lastNav = filteredHistory.length > 1 ? filteredHistory[filteredHistory.length - 1].nav_per_share : null;
+                                const perfPct = firstNav && lastNav && firstNav > 0 ? ((lastNav - firstNav) / firstNav) * 100 : null;
+                                const isGain = perfPct === null || perfPct >= 0;
+                                const chartColor = isGain ? '#10b981' : '#ef4444';
+                                const tickColor = darkMode ? '#71717a' : '#6b7280';
+                                return (
+                                <div className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 p-6 md:p-8 shadow-sm">
+                                    {/* Chart header: title + performance + controls */}
+                                    <div className="flex flex-col gap-4 mb-6">
+                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="font-bold text-base text-zinc-500 dark:text-zinc-400 uppercase tracking-widest text-[11px]">Performance du club</h3>
+                                                    <button onClick={() => setHelpTopic('nav')} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 w-4 h-4 rounded-full border flex items-center justify-center border-current text-[10px]">?</button>
+                                                </div>
+                                                {perfPct !== null ? (
+                                                    <div className="flex items-baseline gap-3">
+                                                        <span className={`text-3xl font-black tabular-nums ${isGain ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                            {isGain ? '+' : ''}{perfPct.toFixed(2)}%
+                                                        </span>
+                                                        <span className={`text-sm font-semibold ${isGain ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                            {isGain ? '▲' : '▼'} sur la période
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-2xl font-black text-zinc-300 dark:text-zinc-600">—</p>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-3 flex-wrap">
+                                                <div className="flex gap-1">
+                                                    {(['SPY', '^FCHI'] as const).map(sym => (
+                                                        <button key={sym} onClick={() => setBenchmarkSymbol(benchmarkSymbol === sym ? null : sym)}
+                                                            className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${benchmarkSymbol === sym ? 'bg-indigo-600 text-white border-indigo-600' : 'border-zinc-200 dark:border-zinc-700 text-zinc-400 hover:border-zinc-400'}`}>
+                                                            {isFetchingBenchmark && benchmarkSymbol === sym ? '...' : `vs ${sym === '^FCHI' ? 'CAC 40' : 'S&P 500'}`}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-lg p-1">
+                                                    {(['1J', '1S', '1M', '1A', 'MAX'] as TimeRange[]).map(r => (
+                                                        <button
+                                                            key={r}
+                                                            onClick={() => setChartRange(r)}
+                                                            className={`text-xs font-bold px-3 py-1.5 rounded-md transition-all ${chartRange === r ? 'bg-white dark:bg-zinc-600 shadow-sm text-zinc-900 dark:text-white' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'}`}
+                                                        >
+                                                            {r}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         </div>
-                                    ) : (
-                                        <ResponsiveContainer>
-                                            <AreaChart data={filteredHistory}>
-                                                <defs>
-                                                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                                    </linearGradient>
-                                                </defs>
-                                                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={darkMode ? 0.1 : 0.8} />
-                                                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: darkMode ? '#94a3b8' : '#64748b' }}
-                                                    tickFormatter={(val) => { const d = new Date(val); return `${d.getDate()}/${d.getMonth() + 1}`; }}
-                                                    interval="preserveStartEnd" />
-                                                <YAxis hide={false} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: darkMode ? '#94a3b8' : '#64748b' }} domain={['dataMin - 1', 'dataMax + 1']} width={45} tickFormatter={v => v.toFixed(0)} />
-                                                <Tooltip
-                                                    contentStyle={{ backgroundColor: darkMode ? '#000' : '#fff', borderRadius: '12px', border: '1px solid #333' }}
-                                                    itemStyle={{ color: darkMode ? '#fff' : '#000' }}
-                                                    labelStyle={{ color: '#9ca3af' }}
-                                                    labelFormatter={(l: string) => new Date(l).toLocaleDateString('fr-FR')}
-                                                    formatter={(value: number) => [`${value.toFixed(2)} ${activeClub.currency}`, 'Quote-part']}
-                                                />
-                                                <Area type="monotone" dataKey="nav_per_share" stroke="#10b981" fill="url(#colorValue)" strokeWidth={3} activeDot={{ r: 6, fill: '#10b981' }} />
-                                            </AreaChart>
-                                        </ResponsiveContainer>
-                                    )}
+                                    </div>
+                                    <div className="h-[240px] md:h-[300px] w-full">
+                                        {filteredHistory.length <= 1 ? (
+                                            <div className="h-full flex flex-col items-center justify-center text-zinc-400 gap-2">
+                                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-30">
+                                                    <path d="M3 16L9 10L13 14L21 6" strokeLinecap="round" strokeLinejoin="round"/>
+                                                </svg>
+                                                <p className="text-sm">Aucun historique sur cette période.</p>
+                                                {isAdmin && <p className="text-xs opacity-60">Effectuez un dépôt ou un achat pour générer un premier point.</p>}
+                                            </div>
+                                        ) : (
+                                            <ResponsiveContainer>
+                                                <AreaChart data={filteredHistory} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                                                    <defs>
+                                                        <linearGradient id="colorNav" x1="0" y1="0" x2="0" y2="1">
+                                                            <stop offset="5%" stopColor={chartColor} stopOpacity={0.25} />
+                                                            <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={darkMode ? '#27272a' : '#f4f4f5'} />
+                                                    <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: tickColor }}
+                                                        tickFormatter={(val) => { const d = new Date(val); return `${d.getDate()}/${d.getMonth() + 1}`; }}
+                                                        interval="preserveStartEnd" />
+                                                    <YAxis hide={false} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: tickColor }} domain={['dataMin - 0.5', 'dataMax + 0.5']} width={48} tickFormatter={v => v.toFixed(0)} />
+                                                    <Tooltip
+                                                        contentStyle={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', borderRadius: '12px', border: `1px solid ${darkMode ? '#3f3f46' : '#e4e4e7'}`, boxShadow: '0 10px 30px rgba(0,0,0,0.15)' }}
+                                                        itemStyle={{ color: darkMode ? '#fff' : '#18181b', fontWeight: 700 }}
+                                                        labelStyle={{ color: tickColor, fontSize: 11 }}
+                                                        labelFormatter={(l: string) => new Date(l).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                                        formatter={(value: number) => [`${value.toFixed(4)} ${activeClub.currency}`, 'Quote-part']}
+                                                    />
+                                                    <Area type="monotone" dataKey="nav_per_share" stroke={chartColor} fill="url(#colorNav)" strokeWidth={2.5} dot={false} activeDot={{ r: 5, fill: chartColor, strokeWidth: 0 }} />
+                                                </AreaChart>
+                                            </ResponsiveContainer>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
+                                );
+                            })()}
                         </>
                     )}
 
@@ -3419,8 +3574,27 @@ export default function App() {
                     ) : (
                         <>
                             {tradeType === 'BUY' && (
-                                <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs text-slate-500">
-                                    Cash disponible : <span className="font-mono font-bold text-slate-900 dark:text-white">{activeClub.cash_balance.toFixed(2)} {activeClub.currency}</span>
+                                <div className="p-3 bg-zinc-50 dark:bg-zinc-800 rounded-xl text-xs text-zinc-500">
+                                    Cash disponible : <span className="font-mono font-bold text-zinc-900 dark:text-white">{activeClub.cash_balance.toFixed(2)} {activeClub.currency}</span>
+                                </div>
+                            )}
+
+                            {/* Popular instruments quick-pick */}
+                            {!tradeTicker && (
+                                <div className="space-y-2">
+                                    <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Accès rapide</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {POPULAR_INSTRUMENTS.map(inst => (
+                                            <button
+                                                key={inst.ticker}
+                                                onClick={() => { setTradeTicker(inst.ticker); setTradeCurrency(inst.currency); }}
+                                                className="px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-700 dark:hover:text-emerald-400 border border-zinc-200 dark:border-zinc-700 hover:border-emerald-200 dark:hover:border-emerald-800/60 rounded-xl text-xs font-semibold text-zinc-700 dark:text-zinc-300 transition-all active:scale-95"
+                                            >
+                                                {inst.ticker}
+                                                <span className="text-zinc-400 font-normal ml-1">· {inst.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
 

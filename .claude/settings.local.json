@@ -63,7 +63,11 @@
       "Bash(\"/c/Users/Clement VENOT/scoop/apps/supabase/2.78.1/supabase.exe\" functions deploy get-chart-data)",
       "Bash(\"/c/Users/Clement VENOT/scoop/apps/supabase/2.78.1/supabase.exe\" functions list)",
       "Bash(node -e \":*)",
-      "Bash(ls -la public/*.png)"
+      "Bash(ls -la public/*.png)",
+      "Read(//c/Users/Clement VENOT/.claude/projects/c--Users-Clement-VENOT-Documents-GitHub-clubInvest/memory/**)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Clement VENOT\\.claude\\projects\\c--Users-Clement-VENOT-Documents-GitHub-clubInvest\\memory"
     ]
   }
 }

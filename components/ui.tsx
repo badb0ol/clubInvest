@@ -5,15 +5,15 @@ import React from 'react';
 
 export const Logo: React.FC<{ className?: string, onClick?: () => void }> = ({ className = '', onClick }) => (
   <div onClick={onClick} className={`flex items-center gap-2 cursor-pointer group ${className}`}>
-    <div className="w-8 h-8 bg-slate-900 dark:bg-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+    <div className="w-8 h-8 bg-zinc-900 dark:bg-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M3 21H21" className="stroke-white dark:stroke-slate-900" strokeWidth="2" strokeLinecap="round"/>
-        <path d="M3 16L9 10L13 14L21 6" className="stroke-white dark:stroke-slate-900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M21 6V10" className="stroke-white dark:stroke-slate-900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M21 6H17" className="stroke-white dark:stroke-slate-900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M3 21H21" className="stroke-white dark:stroke-zinc-900" strokeWidth="2" strokeLinecap="round"/>
+        <path d="M3 16L9 10L13 14L21 6" className="stroke-white dark:stroke-zinc-900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M21 6V10" className="stroke-white dark:stroke-zinc-900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M21 6H17" className="stroke-white dark:stroke-zinc-900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     </div>
-    <span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white">ClubInvest</span>
+    <span className="font-bold text-xl tracking-tight text-zinc-900 dark:text-white">ClubInvest</span>
   </div>
 );
 
@@ -40,13 +40,12 @@ export const Icon: React.FC<{ name: 'dashboard' | 'pie' | 'users' | 'book' | 'se
         download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></>,
         check: <path d="M20 6L9 17l-5-5"/>,
         x: <path d="M18 6L6 18M6 6l12 12"/>,
-
     };
 
     return (
-        <svg 
-            className={className} 
-            width="24" height="24" viewBox="0 0 24 24" 
+        <svg
+            className={className}
+            width="24" height="24" viewBox="0 0 24 24"
             fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
         >
             {icons[name] || icons.dashboard}
@@ -57,7 +56,7 @@ export const Icon: React.FC<{ name: 'dashboard' | 'pie' | 'users' | 'book' | 'se
 // --- LAYOUT COMPONENTS ---
 
 export const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
-  <div className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 p-8 transition-colors duration-300 ${className}`}>
+  <div className={`bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-100 dark:border-zinc-800 p-8 transition-colors duration-300 ${className}`}>
     {children}
   </div>
 );
@@ -72,12 +71,12 @@ export const Button: React.FC<{
 }> = ({ children, onClick, variant = 'primary', className = '', disabled = false, type = 'button' }) => {
   const baseStyle = "px-6 py-3 rounded-full font-semibold tracking-wide transition-all duration-200 active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-2 text-sm select-none";
   const variants = {
-    primary: "bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-200 shadow-lg shadow-slate-900/10",
-    secondary: "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700",
-    danger: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 border border-red-100 dark:border-red-900/50",
-    success: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-900/20",
-    outline: "border-2 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-900 dark:hover:border-white hover:text-slate-900 dark:hover:text-white bg-transparent",
-    ghost: "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800"
+    primary: "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 hover:bg-zinc-700 dark:hover:bg-zinc-100 shadow-lg shadow-zinc-900/10",
+    secondary: "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700",
+    danger: "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/60 border border-red-100 dark:border-red-900/50",
+    success: "bg-emerald-600 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/20",
+    outline: "border-2 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-zinc-900 dark:hover:border-white hover:text-zinc-900 dark:hover:text-white bg-transparent",
+    ghost: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white bg-transparent hover:bg-zinc-50 dark:hover:bg-zinc-800"
   };
 
   return (
@@ -95,15 +94,15 @@ export const Button: React.FC<{
 export const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (props) => (
   <input
     {...props}
-    className={`w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl px-5 py-4 text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-slate-900 dark:focus:ring-white outline-none transition-all font-medium ${props.className || ''}`}
+    className={`w-full bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl px-5 py-4 text-zinc-900 dark:text-white placeholder-zinc-400 focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white outline-none transition-all font-medium ${props.className || ''}`}
   />
 );
 
 export const Badge: React.FC<{ children: React.ReactNode; type?: 'positive' | 'negative' | 'neutral' }> = ({ children, type = 'neutral' }) => {
   const styles = {
-    positive: "text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 border border-green-100 dark:border-green-900/50",
-    negative: "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-900/50",
-    neutral: "text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+    positive: "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-100 dark:border-emerald-900/50",
+    negative: "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-900/50",
+    neutral: "text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700"
   };
   return (
     <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-widest ${styles[type]}`}>
@@ -117,10 +116,10 @@ export const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: stri
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-white/80 dark:bg-black/80 backdrop-blur-md" onClick={onClose}></div>
-            <div className="bg-white dark:bg-slate-900 rounded-[2rem] w-full max-w-md z-10 p-8 shadow-2xl animate-in fade-in zoom-in duration-300 border border-slate-100 dark:border-slate-800 max-h-[90vh] overflow-y-auto ring-1 ring-slate-900/5 dark:ring-white/10">
+            <div className="bg-white dark:bg-zinc-900 rounded-[2rem] w-full max-w-md z-10 p-8 shadow-2xl animate-in fade-in zoom-in duration-300 border border-zinc-100 dark:border-zinc-800 max-h-[90vh] overflow-y-auto ring-1 ring-zinc-900/5 dark:ring-white/10">
                 <div className="flex justify-between items-center mb-8">
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{title}</h2>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
+                    <h2 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">{title}</h2>
+                    <button onClick={onClose} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">
                         <Icon name="close" className="w-5 h-5" />
                     </button>
                 </div>
@@ -136,11 +135,11 @@ export const Table: React.FC<{ headers: string[]; children: React.ReactNode }> =
       <thead className="">
         <tr>
           {headers.map((h, i) => (
-            <th key={i} className="px-6 py-4 font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest text-[10px]">{h}</th>
+            <th key={i} className="px-6 py-4 font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest text-[10px]">{h}</th>
           ))}
         </tr>
       </thead>
-      <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+      <tbody className="divide-y divide-zinc-50 dark:divide-zinc-800">
         {children}
       </tbody>
     </table>
@@ -148,16 +147,16 @@ export const Table: React.FC<{ headers: string[]; children: React.ReactNode }> =
 );
 
 export const TableRow: React.FC<{ children: React.ReactNode; onClick?: () => void }> = ({ children, onClick }) => (
-  <tr 
+  <tr
     onClick={onClick}
-    className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${onClick ? 'cursor-pointer' : ''}`}
+    className={`hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors ${onClick ? 'cursor-pointer' : ''}`}
   >
     {children}
   </tr>
 );
 
 export const TableCell: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
-  <td className={`px-6 py-5 whitespace-nowrap text-slate-900 dark:text-slate-100 font-medium ${className}`}>
+  <td className={`px-6 py-5 whitespace-nowrap text-zinc-900 dark:text-zinc-100 font-medium ${className}`}>
     {children}
   </td>
 );
