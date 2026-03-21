@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AreaChart, Area, ResponsiveContainer, YAxis, Tooltip, XAxis, CartesianGrid } from 'recharts';
-import { Club, Member, Asset, Transaction, NavEntry, PortfolioSummary, Message, Proposal, PriceAlert, DividendEntry } from './types';
-import { fetchAssetPrice, convertCurrency, fetchBenchmarkHistory, fetchDividendHistory } from './services/financeEngine';
+import { Club, Member, Asset, Transaction, NavEntry, PortfolioSummary, Message, Proposal, PriceAlert, DividendEntry, ProposalComment, AuditEntry, AppNotification } from './types';
+import { fetchAssetPrice, convertCurrency, fetchBenchmarkHistory, fetchDividendHistory, fetchLiveExchangeRates, fetchPricesWithCache, searchTickers } from './services/financeEngine';
 import { generateInviteCode, calculatePortfolioState, executeBuyOrder, executeSellOrder, executeWithdrawal, createNavSnapshot } from './services/ClubManager';
 import { analyzePortfolioDistribution } from './services/geminiService';
 import { Card, Button, Input, Badge, Modal, Table, TableRow, TableCell, Logo, Icon } from './components/ui';
+import { PortfolioAnalysis } from './components/PortfolioAnalysis';
 import { supabase } from './lib/supabaseClient';
 import { Session } from '@supabase/supabase-js';
 
@@ -18,7 +19,7 @@ const AVAILABLE_BANKS = [
 ];
 
 type TimeRange = '1J' | '1S' | '1M' | '1A' | 'MAX';
-type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' | 'members' | 'journal' | 'chat' | 'guide' | 'votes' | 'admin';
+type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' | 'members' | 'journal' | 'chat' | 'guide' | 'votes' | 'admin' | 'analysis';
 type ModalType = 'addMember' | 'deposit' | 'trade' | 'connectBank' | 'withdraw' | 'kickConfirm' | 'resetClub' | null;
 
 // --- INLINE NOTIFICATION ---
@@ -461,21 +462,56 @@ export default function App() {
     const [proposalForm, setProposalForm] = useState({ type: 'BUY' as 'BUY' | 'SELL', ticker: '', quantity: '', price: '', thesis: '' });
     const [isSubmittingProposal, setIsSubmittingProposal] = useState(false);
     const [proposalError, setProposalError] = useState<string | null>(null);
+    const [proposalComments, setProposalComments] = useState<Record<string, ProposalComment[]>>({});
+    const [expandedProposalId, setExpandedProposalId] = useState<string | null>(null);
+    const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+    const [isPostingComment, setIsPostingComment] = useState(false);
 
     // Benchmark
     const [benchmarkData, setBenchmarkData] = useState<{ date: string; value: number }[]>([]);
     const [benchmarkSymbol, setBenchmarkSymbol] = useState<'SPY' | '^FCHI' | null>(null);
     const [isFetchingBenchmark, setIsFetchingBenchmark] = useState(false);
 
-    // Price alerts (localStorage)
+    // Price alerts
     const [priceAlerts, setPriceAlerts] = useState<PriceAlert[]>([]);
     const [alertForm, setAlertForm] = useState({ ticker: '', price: '', direction: 'above' as 'above' | 'below', note: '' });
+
+    // Notifications
+    const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
+    const [showNotifications, setShowNotifications] = useState(false);
+
+    // Audit log
+    const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
+
+    // Rebalancing targets (localStorage)
+    const [rebalancingTargets, setRebalancingTargets] = useState<Record<string, number>>({});
+
+    // Expenses
+    const [expenseForm, setExpenseForm] = useState({ amount: '', description: '' });
+    const [isAddingExpense, setIsAddingExpense] = useState(false);
+
+    // Quorum setting (admin)
+    const [quorumInput, setQuorumInput] = useState('');
+
+    // Dissolution
+    const [dissolutionStep, setDissolutionStep] = useState(0);
+    const [dissolutionPassword, setDissolutionPassword] = useState('');
+    const [isDissolving, setIsDissolving] = useState(false);
+
+    // Asset history chart
+    const [selectedAssetTicker, setSelectedAssetTicker] = useState<string | null>(null);
+    const [assetHistoryData, setAssetHistoryData] = useState<{ date: string; close: number }[]>([]);
+    const [isFetchingAssetHistory, setIsFetchingAssetHistory] = useState(false);
+
+    // Ticker search autocomplete
+    const [tickerSearchResults, setTickerSearchResults] = useState<{ symbol: string; instrument_name: string }[]>([]);
+    const [showTickerDropdown, setShowTickerDropdown] = useState(false);
 
     // Dividends
     const [dividends, setDividends] = useState<DividendEntry[]>([]);
 
     // Journal filter
-    const [journalFilter, setJournalFilter] = useState<'ALL' | 'DEPOSIT' | 'WITHDRAWAL' | 'BUY' | 'SELL'>('ALL');
+    const [journalFilter, setJournalFilter] = useState<'ALL' | 'DEPOSIT' | 'WITHDRAWAL' | 'BUY' | 'SELL' | 'DIVIDEND' | 'EXPENSE'>('ALL');
 
     // Chat state
     const [messages, setMessages] = useState<Message[]>([]);
@@ -639,14 +675,17 @@ export default function App() {
         return () => { if (channel) supabase.removeChannel(channel); };
     }, [activeClub?.id]);
 
-    // --- REAL TIME PRICES (parallelized) ---
+    // --- LIVE EXCHANGE RATES ---
+    useEffect(() => {
+        fetchLiveExchangeRates().catch(() => {});
+    }, []);
+
+    // --- REAL TIME PRICES (with Supabase cache) ---
     useEffect(() => {
         if (!activeClub || assets.length === 0) return;
         const fetchPrices = async () => {
             setIsFetchingPrices(true);
-            const results = await Promise.all(assets.map(a => fetchAssetPrice(a.ticker).then(price => ({ ticker: a.ticker, price }))));
-            const newPrices: Record<string, number> = {};
-            results.forEach(({ ticker, price }) => { newPrices[ticker] = price; });
+            const newPrices = await fetchPricesWithCache(assets.map(a => a.ticker));
             setAssetPrices(prev => ({ ...prev, ...newPrices }));
             setIsFetchingPrices(false);
         };
@@ -1119,11 +1158,10 @@ export default function App() {
     };
 
     const handleVote = async (proposalId: string, vote: 'for' | 'against') => {
-        if (!session) return;
+        if (!session || !activeClub) return;
         try {
             const { error } = await supabase.from('votes').insert({ proposal_id: proposalId, user_id: session.user.id, vote });
             if (error) throw error;
-            // Update local vote count
             const newProposals = proposals.map(p => {
                 if (p.id !== proposalId) return p;
                 const updated = {
@@ -1131,15 +1169,33 @@ export default function App() {
                     votes_for: p.votes_for + (vote === 'for' ? 1 : 0),
                     votes_against: p.votes_against + (vote === 'against' ? 1 : 0)
                 };
-                // Auto-approve if majority reached
-                const majority = Math.floor(members.length / 2) + 1;
-                const newStatus = updated.votes_for >= majority ? 'approved' : updated.votes_against >= majority ? 'rejected' : 'pending';
+                // Quorum-aware auto-close
+                const total = members.length;
+                const quorumPct = (activeClub as any).quorum_pct ?? 60;
+                const participationPct = total > 0 ? ((updated.votes_for + updated.votes_against) / total) * 100 : 0;
+                const quorumReached = participationPct >= quorumPct;
+                const majority = Math.floor(total / 2) + 1;
+                let newStatus: Proposal['status'] = 'pending';
+                if (quorumReached) {
+                    if (updated.votes_for >= majority) newStatus = 'approved';
+                    else if (updated.votes_against >= majority) newStatus = 'rejected';
+                }
                 if (newStatus !== 'pending') {
                     supabase.from('proposals').update({ votes_for: updated.votes_for, votes_against: updated.votes_against, status: newStatus }).eq('id', proposalId).then(() => {});
+                    // Write notification for all members
+                    members.forEach(m => {
+                        supabase.from('app_notifications').insert({
+                            club_id: activeClub.id,
+                            user_id: m.user_id,
+                            type: 'VOTE_RESULT',
+                            title: `Vote ${newStatus === 'approved' ? 'approuvé' : 'rejeté'} : ${p.ticker}`,
+                            body: `La proposition ${p.type} ${p.quantity}× ${p.ticker} a été ${newStatus === 'approved' ? 'approuvée' : 'rejetée'}.`,
+                        }).then(() => {});
+                    });
                 } else {
                     supabase.from('proposals').update({ votes_for: updated.votes_for, votes_against: updated.votes_against }).eq('id', proposalId).then(() => {});
                 }
-                return { ...updated, status: newStatus as Proposal['status'] };
+                return { ...updated, status: newStatus };
             });
             setProposals(newProposals);
             setMyVotes(prev => ({ ...prev, [proposalId]: vote }));
@@ -1147,6 +1203,260 @@ export default function App() {
             notify(e.message || 'Erreur lors du vote.');
         }
     };
+
+    // --- PROPOSAL COMMENTS ---
+    const handleLoadComments = async (proposalId: string) => {
+        if (proposalComments[proposalId]) return; // already loaded
+        const { data } = await supabase
+            .from('proposal_comments')
+            .select('*')
+            .eq('proposal_id', proposalId)
+            .order('created_at', { ascending: true });
+        if (data) setProposalComments(prev => ({ ...prev, [proposalId]: data as ProposalComment[] }));
+    };
+
+    const handlePostComment = async (proposalId: string) => {
+        if (!session || !activeClub || !currentUserMember) return;
+        const content = (commentInputs[proposalId] || '').trim();
+        if (!content) return;
+        setIsPostingComment(true);
+        const { data, error } = await supabase.from('proposal_comments').insert({
+            proposal_id: proposalId,
+            club_id: activeClub.id,
+            user_id: session.user.id,
+            user_name: currentUserMember.full_name,
+            content,
+        }).select().single();
+        if (!error && data) {
+            setProposalComments(prev => ({
+                ...prev,
+                [proposalId]: [...(prev[proposalId] || []), data as ProposalComment]
+            }));
+            setCommentInputs(prev => ({ ...prev, [proposalId]: '' }));
+        }
+        setIsPostingComment(false);
+    };
+
+    // --- AUDIT LOG ---
+    const logAudit = async (action: string, details?: Record<string, any>) => {
+        if (!activeClub || !session || !currentUserMember) return;
+        await supabase.from('audit_log').insert({
+            club_id: activeClub.id,
+            user_id: session.user.id,
+            user_name: currentUserMember.full_name,
+            action,
+            details: details || {},
+        }).then(() => {});
+    };
+
+    const loadAuditLog = async (clubId: string) => {
+        const { data } = await supabase
+            .from('audit_log')
+            .select('*')
+            .eq('club_id', clubId)
+            .order('created_at', { ascending: false })
+            .limit(100);
+        if (data) setAuditLog(data as AuditEntry[]);
+    };
+
+    // --- NOTIFICATIONS ---
+    const loadNotifications = async () => {
+        if (!session) return;
+        const { data } = await supabase
+            .from('app_notifications')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .order('created_at', { ascending: false })
+            .limit(50);
+        if (data) setAppNotifications(data as AppNotification[]);
+    };
+
+    const handleMarkAllRead = async () => {
+        if (!session) return;
+        await supabase.from('app_notifications')
+            .update({ read: true })
+            .eq('user_id', session.user.id)
+            .eq('read', false);
+        setAppNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    };
+
+    useEffect(() => {
+        if (!session || !activeClub) return;
+        loadNotifications();
+        loadAuditLog(activeClub.id);
+    }, [session?.user.id, activeClub?.id]);
+
+    // --- EXPENSES ---
+    const handleAddExpense = async () => {
+        const amount = parseFloat(expenseForm.amount);
+        if (!activeClub || isNaN(amount) || amount <= 0 || !expenseForm.description.trim()) {
+            notify('Montant et description requis.', 'error');
+            return;
+        }
+        setIsAddingExpense(true);
+        try {
+            await supabase.from('clubs').update({
+                cash_balance: activeClub.cash_balance - amount
+            }).eq('id', activeClub.id);
+            await supabase.from('transactions').insert({
+                club_id: activeClub.id,
+                user_id: session?.user.id,
+                type: 'EXPENSE',
+                amount_fiat: amount,
+                description: expenseForm.description.trim(),
+            });
+            await logAudit('EXPENSE', { amount, description: expenseForm.description });
+            await loadClubData(activeClub.id);
+            setExpenseForm({ amount: '', description: '' });
+            notify(`Dépense de ${amount.toFixed(2)} € enregistrée.`);
+        } catch (e: any) {
+            notify(e.message, 'error');
+        } finally {
+            setIsAddingExpense(false);
+        }
+    };
+
+    // --- QUORUM SETTING ---
+    const handleUpdateQuorum = async () => {
+        const pct = parseInt(quorumInput);
+        if (!activeClub || isNaN(pct) || pct < 1 || pct > 100) {
+            notify('Seuil invalide (1-100).', 'error');
+            return;
+        }
+        await supabase.from('clubs').update({ quorum_pct: pct }).eq('id', activeClub.id);
+        setActiveClub(prev => prev ? { ...prev, quorum_pct: pct } : prev);
+        setQuorumInput('');
+        notify(`Quorum mis à jour : ${pct}%`);
+    };
+
+    // --- REBALANCING TARGETS ---
+    useEffect(() => {
+        if (!activeClub) return;
+        const stored = localStorage.getItem(`clubinvest_rebalancing_${activeClub.id}`);
+        if (stored) { try { setRebalancingTargets(JSON.parse(stored)); } catch { /* ignore */ } }
+    }, [activeClub?.id]);
+
+    const handleSetTarget = (ticker: string, pct: number) => {
+        const updated = { ...rebalancingTargets, [ticker]: pct };
+        setRebalancingTargets(updated);
+        if (activeClub) localStorage.setItem(`clubinvest_rebalancing_${activeClub.id}`, JSON.stringify(updated));
+    };
+
+    // --- DIVIDEND CREDIT ---
+    const handleCreditDividend = async (dividend: DividendEntry) => {
+        if (!activeClub || !session) return;
+        const asset = assets.find(a => a.ticker === dividend.ticker);
+        if (!asset) return;
+        const totalAmount = dividend.amount * asset.quantity;
+        const dateKey = dividend.date;
+        // Check not already credited
+        const alreadyCredited = transactions.some(t =>
+            t.type === 'DIVIDEND' && t.asset_ticker === dividend.ticker &&
+            t.created_at.startsWith(dateKey)
+        );
+        if (alreadyCredited) { notify('Dividende déjà crédité.', 'error'); return; }
+        try {
+            await supabase.from('clubs').update({ cash_balance: activeClub.cash_balance + totalAmount }).eq('id', activeClub.id);
+            await supabase.from('transactions').insert({
+                club_id: activeClub.id,
+                user_id: session.user.id,
+                type: 'DIVIDEND',
+                amount_fiat: totalAmount,
+                asset_ticker: dividend.ticker,
+                description: `Dividende ${dividend.ticker} du ${new Date(dividend.date).toLocaleDateString('fr-FR')}`,
+                created_at: dateKey + 'T12:00:00Z',
+            });
+            await logAudit('DIVIDEND', { ticker: dividend.ticker, amount: totalAmount, date: dateKey });
+            await loadClubData(activeClub.id);
+            notify(`+${totalAmount.toFixed(2)} ${dividend.currency} crédité (dividende ${dividend.ticker}).`);
+        } catch (e: any) {
+            notify(e.message, 'error');
+        }
+    };
+
+    // --- DISSOLUTION ---
+    const handleDissolve = async () => {
+        if (!activeClub || !session) return;
+        setIsDissolving(true);
+        try {
+            const { error: authErr } = await supabase.auth.signInWithPassword({
+                email: session.user.email!,
+                password: dissolutionPassword,
+            });
+            if (authErr) throw new Error('Mot de passe incorrect.');
+
+            // Step 1: liquidate all assets at current prices
+            for (const asset of assets) {
+                const price = assetPrices[asset.ticker] || asset.avg_buy_price;
+                const revenue = asset.quantity * price * convertCurrency(1, asset.currency, activeClub.currency);
+                await supabase.from('transactions').insert({
+                    club_id: activeClub.id,
+                    user_id: session.user.id,
+                    type: 'SELL',
+                    amount_fiat: revenue,
+                    asset_ticker: asset.ticker,
+                    price_at_transaction: price,
+                    description: 'Liquidation dissolution',
+                });
+                await supabase.from('assets').delete().eq('id', asset.id);
+            }
+
+            // Step 2: compute total cash after liquidation
+            const liquidatedCash = assets.reduce((sum, a) => {
+                const price = assetPrices[a.ticker] || a.avg_buy_price;
+                return sum + a.quantity * price * convertCurrency(1, a.currency, activeClub.currency);
+            }, activeClub.cash_balance);
+
+            // Step 3: distribute pro-rata to each member
+            const totalShares = activeClub.total_shares;
+            for (const m of members) {
+                if (m.shares_owned <= 0) continue;
+                const share = totalShares > 0 ? (m.shares_owned / totalShares) * liquidatedCash : 0;
+                await supabase.from('transactions').insert({
+                    club_id: activeClub.id,
+                    user_id: m.user_id,
+                    type: 'WITHDRAWAL',
+                    amount_fiat: share,
+                    shares_change: -m.shares_owned,
+                    description: 'Dissolution du club',
+                });
+                await supabase.from('club_members').update({ shares_owned: 0, total_invested_fiat: 0 }).eq('id', m.id);
+            }
+
+            // Step 4: mark club dissolved
+            await supabase.from('clubs').update({
+                status: 'dissolved',
+                dissolved_at: new Date().toISOString(),
+                cash_balance: 0,
+                total_shares: 0,
+            }).eq('id', activeClub.id);
+
+            await logAudit('DISSOLUTION', { total_distributed: liquidatedCash });
+            notify('Club dissous. Les données sont conservées en lecture seule.');
+            setDissolutionStep(0);
+            setDissolutionPassword('');
+            await loadClubData(activeClub.id);
+        } catch (e: any) {
+            notify(e.message, 'error');
+        } finally {
+            setIsDissolving(false);
+        }
+    };
+
+    // --- TICKER AUTOCOMPLETE ---
+    useEffect(() => {
+        if (!tradeTicker || tradeTicker.length < 2) {
+            setTickerSearchResults([]);
+            setShowTickerDropdown(false);
+            return;
+        }
+        const timeout = setTimeout(async () => {
+            const results = await searchTickers(tradeTicker);
+            setTickerSearchResults(results);
+            setShowTickerDropdown(results.length > 0);
+        }, 400);
+        return () => clearTimeout(timeout);
+    }, [tradeTicker]);
 
     const handleExecuteProposal = async (proposal: Proposal) => {
         if (!activeClub || !currentUserMember) return;
@@ -1441,12 +1751,48 @@ export default function App() {
         { id: 'votes', label: 'Votes', shortLabel: 'Votes', icon: 'vote' },
     ];
 
+    const unreadNotifCount = appNotifications.filter(n => !n.read).length;
+
     return (
         <div className="font-sans transition-colors duration-500 min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-slate-100 md:flex">
 
             {/* NOTIFICATION */}
             {notification && (
                 <Notification message={notification.message} type={notification.type} onClose={() => setNotification(null)} />
+            )}
+
+            {/* NOTIFICATION PANEL */}
+            {showNotifications && (
+                <div className="fixed inset-0 z-[55] flex">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowNotifications(false)} />
+                    <div className="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-white dark:bg-slate-900 shadow-2xl flex flex-col z-10 border-l border-slate-200 dark:border-slate-800">
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                            <h3 className="font-bold text-slate-900 dark:text-white">Notifications</h3>
+                            <button onClick={() => setShowNotifications(false)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
+                                <Icon name="close" className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+                            {appNotifications.length === 0 ? (
+                                <div className="p-8 text-center text-slate-400">
+                                    <Icon name="bell" className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                    <p className="text-sm">Aucune notification.</p>
+                                </div>
+                            ) : appNotifications.map(n => (
+                                <div key={n.id} className={`p-4 ${n.read ? '' : 'bg-blue-50/50 dark:bg-blue-900/10'}`}>
+                                    <div className="flex justify-between items-start gap-2">
+                                        <div>
+                                            <p className="text-sm font-semibold text-slate-900 dark:text-white">{n.title}</p>
+                                            {n.body && <p className="text-xs text-slate-500 mt-0.5">{n.body}</p>}
+                                        </div>
+                                        {!n.read && <span className="w-2 h-2 bg-blue-500 rounded-full shrink-0 mt-1.5" />}
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-1">{new Date(n.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* TUTORIAL */}
@@ -1509,6 +1855,17 @@ export default function App() {
                             <Icon name="guide" className="w-5 h-5" />
                             Guide & Fiscalité
                         </button>
+                        <button onClick={() => setView('analysis')} className={`w-full text-left px-4 py-3 text-sm font-semibold transition-all flex items-center gap-4 rounded-xl ${view === 'analysis' ? 'bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-900/50'}`}>
+                            <Icon name="pie" className="w-5 h-5" />
+                            Analyse
+                        </button>
+                        <button onClick={() => { setShowNotifications(v => !v); handleMarkAllRead(); }} className={`w-full text-left px-4 py-3 text-sm font-semibold transition-all flex items-center gap-4 rounded-xl ${showNotifications ? 'bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-900/50'}`}>
+                            <div className="relative">
+                                <Icon name="bell" className="w-5 h-5" />
+                                {unreadNotifCount > 0 && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">{unreadNotifCount > 9 ? '9+' : unreadNotifCount}</span>}
+                            </div>
+                            Notifications
+                        </button>
                         {isAdmin && (
                             <button onClick={() => setView('admin')} className={`w-full text-left px-4 py-3 text-sm font-semibold transition-all flex items-center gap-4 rounded-xl mt-6 ${view === 'admin' ? 'bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-900/50'}`}>
                                 <Icon name="settings" className="w-5 h-5" />
@@ -1542,11 +1899,18 @@ export default function App() {
             <header className="md:hidden fixed top-0 w-full z-40 bg-white/80 dark:bg-black/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 p-4 flex justify-between items-center">
                 <Logo className="w-auto h-8" onClick={() => setView('dashboard')} />
                 <div className="flex items-center gap-1">
+                    <button onClick={() => setView('analysis')} className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${view === 'analysis' ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`} title="Analyse">
+                        <Icon name="pie" className="w-5 h-5" />
+                    </button>
                     <button onClick={() => setView('members')} className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${view === 'members' ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`} title="Membres">
                         <Icon name="users" className="w-5 h-5" />
                     </button>
                     <button onClick={() => setView('guide')} className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${view === 'guide' ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`} title="Guide">
                         <Icon name="guide" className="w-5 h-5" />
+                    </button>
+                    <button onClick={() => { setShowNotifications(v => !v); handleMarkAllRead(); }} className="relative p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-400" title="Notifications">
+                        <Icon name="bell" className="w-5 h-5" />
+                        {unreadNotifCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-black" />}
                     </button>
                     <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-400">
                         <Icon name={darkMode ? 'sun' : 'moon'} className="w-5 h-5" />
@@ -1915,17 +2279,34 @@ export default function App() {
                         {/* DIVIDENDS */}
                         {dividends.length > 0 && (
                             <Card>
-                                <h3 className="font-bold text-slate-900 dark:text-white mb-4">Historique Dividendes</h3>
+                                <h3 className="font-bold text-slate-900 dark:text-white mb-1">Historique Dividendes</h3>
+                                <p className="text-xs text-slate-400 mb-4">Cliquez "Créditer" pour enregistrer un dividende reçu dans la trésorerie du club.</p>
                                 <div className="space-y-2">
-                                    {dividends.slice(0, 12).map((d, i) => (
-                                        <div key={i} className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800 last:border-0 text-sm">
-                                            <div className="flex items-center gap-3">
-                                                <span className="font-mono font-bold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">{d.ticker}</span>
-                                                <span className="text-slate-500">{new Date(d.date).toLocaleDateString('fr-FR')}</span>
+                                    {dividends.slice(0, 12).map((d, i) => {
+                                        const asset = assets.find(a => a.ticker === d.ticker);
+                                        const total = asset ? d.amount * asset.quantity : null;
+                                        const alreadyCredited = transactions.some(t =>
+                                            t.type === 'DIVIDEND' && t.asset_ticker === d.ticker && t.created_at.startsWith(d.date)
+                                        );
+                                        return (
+                                            <div key={i} className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800 last:border-0 text-sm">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="font-mono font-bold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">{d.ticker}</span>
+                                                    <span className="text-slate-500">{new Date(d.date).toLocaleDateString('fr-FR')}</span>
+                                                    {total && <span className="text-xs text-slate-400">×{asset?.quantity.toFixed(2)} = <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">+{total.toFixed(2)} {d.currency}</span></span>}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-mono text-slate-400 text-xs">{d.amount.toFixed(4)}/action</span>
+                                                    {isAdmin && !alreadyCredited && total && (
+                                                        <button onClick={() => handleCreditDividend(d)} className="text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-2 py-1 rounded-lg font-bold hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition-colors">
+                                                            Créditer
+                                                        </button>
+                                                    )}
+                                                    {alreadyCredited && <Badge type="positive">Crédité</Badge>}
+                                                </div>
                                             </div>
-                                            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">+{d.amount.toFixed(4)} {d.currency}</span>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                                 <p className="text-xs text-slate-400 mt-3">Données Yahoo Finance — dividendes par action versés par les sociétés détenues.</p>
                             </Card>
@@ -1939,7 +2320,9 @@ export default function App() {
                             <div className="flex justify-between items-center">
                                 <div>
                                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Votes & Propositions</h2>
-                                    <p className="text-sm text-slate-500 mt-1">Proposez un trade, votez collectivement. Majorité simple requise.</p>
+                                    <p className="text-sm text-slate-500 mt-1">
+                                        Majorité simple · Quorum : <span className="font-bold">{(activeClub as any).quorum_pct ?? 60}%</span> de participation requis
+                                    </p>
                                 </div>
                                 <Button onClick={() => { setShowProposalForm(v => !v); setProposalError(null); }}>
                                     {showProposalForm ? 'Annuler' : '+ Proposer'}
@@ -1991,12 +2374,17 @@ export default function App() {
                                 const majority = Math.floor(total / 2) + 1;
                                 const myVote = myVotes[p.id];
                                 const pct = total > 0 ? Math.round((p.votes_for / total) * 100) : 0;
+                                const participation = total > 0 ? Math.round(((p.votes_for + p.votes_against) / total) * 100) : 0;
+                                const quorumPct = (activeClub as any).quorum_pct ?? 60;
+                                const quorumReached = participation >= quorumPct;
                                 const statusColor = { pending: 'neutral', approved: 'positive', rejected: 'negative', executed: 'neutral' }[p.status] as 'positive' | 'negative' | 'neutral';
                                 const statusLabel = { pending: 'En cours', approved: 'Approuvé', rejected: 'Rejeté', executed: 'Exécuté' }[p.status];
+                                const isExpanded = expandedProposalId === p.id;
+                                const comments = proposalComments[p.id] || [];
                                 return (
                                     <Card key={p.id} className={p.status === 'executed' ? 'opacity-60' : ''}>
                                         <div className="flex justify-between items-start mb-3">
-                                            <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-3 flex-wrap">
                                                 <span className={`font-mono font-black text-xl ${p.type === 'BUY' ? 'text-emerald-600' : 'text-red-500'}`}>{p.type}</span>
                                                 <span className="font-bold text-slate-900 dark:text-white text-lg">{p.quantity} × {p.ticker}</span>
                                                 <span className="text-slate-400 text-sm">@ {p.price} {p.currency}</span>
@@ -2016,10 +2404,13 @@ export default function App() {
                                             </div>
                                         </div>
                                         <p className="text-sm text-slate-600 dark:text-slate-300 mb-4 italic">"{p.thesis}"</p>
-                                        <div className="text-xs text-slate-400 mb-3">
-                                            Proposé par <span className="font-semibold text-slate-600 dark:text-slate-300">{p.proposer_name || 'un membre'}</span>
-                                            {' · '}Expire le {new Date(p.expires_at).toLocaleDateString('fr-FR')}
-                                            {' · '}{majority} vote{majority > 1 ? 's' : ''} pour / {total} membres
+                                        <div className="text-xs text-slate-400 mb-3 flex flex-wrap gap-2">
+                                            <span>Par <span className="font-semibold text-slate-600 dark:text-slate-300">{p.proposer_name || 'un membre'}</span></span>
+                                            <span>· Expire {new Date(p.expires_at).toLocaleDateString('fr-FR')}</span>
+                                            <span>· {majority} votes requis / {total} membres</span>
+                                            <span className={`font-semibold ${quorumReached ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                                · Participation : {participation}% {quorumReached ? '✓' : `(min ${quorumPct}%)`}
+                                            </span>
                                         </div>
                                         {/* Vote progress bar */}
                                         <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-3">
@@ -2045,6 +2436,49 @@ export default function App() {
                                                 <Badge type={myVote === 'for' ? 'positive' : 'negative'}>
                                                     Voté {myVote === 'for' ? 'Pour' : 'Contre'}
                                                 </Badge>
+                                            )}
+                                        </div>
+                                        {/* Comments toggle */}
+                                        <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-3">
+                                            <button
+                                                onClick={() => {
+                                                    setExpandedProposalId(isExpanded ? null : p.id);
+                                                    if (!isExpanded) handleLoadComments(p.id);
+                                                }}
+                                                className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white font-semibold flex items-center gap-1 transition-colors"
+                                            >
+                                                <Icon name="chat" className="w-3.5 h-3.5" />
+                                                {isExpanded ? 'Masquer les commentaires' : `Commentaires${comments.length ? ` (${comments.length})` : ''}`}
+                                            </button>
+                                            {isExpanded && (
+                                                <div className="mt-3 space-y-2">
+                                                    {comments.length === 0 && <p className="text-xs text-slate-400 italic">Aucun commentaire. Soyez le premier à débattre !</p>}
+                                                    {comments.map(c => (
+                                                        <div key={c.id} className="flex gap-2 text-sm">
+                                                            <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+                                                                {(c.user_name || '?').charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <div className="flex-1 bg-slate-50 dark:bg-slate-800 rounded-xl px-3 py-2">
+                                                                <span className="font-semibold text-slate-700 dark:text-slate-300 text-xs">{c.user_name || 'Membre'}</span>
+                                                                <span className="text-slate-400 text-xs ml-2">{new Date(c.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                                                                <p className="text-slate-700 dark:text-slate-300 mt-0.5">{c.content}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    <div className="flex gap-2 mt-2">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Ajouter un commentaire..."
+                                                            value={commentInputs[p.id] || ''}
+                                                            onChange={e => setCommentInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                                            onKeyDown={e => { if (e.key === 'Enter') handlePostComment(p.id); }}
+                                                            className="flex-1 text-sm px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border-none outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-slate-600 text-slate-900 dark:text-white placeholder-slate-400"
+                                                        />
+                                                        <Button variant="secondary" className="text-xs px-3 py-2 h-auto" onClick={() => handlePostComment(p.id)} disabled={isPostingComment || !commentInputs[p.id]?.trim()}>
+                                                            ↑
+                                                        </Button>
+                                                    </div>
+                                                </div>
                                             )}
                                         </div>
                                     </Card>
@@ -2172,7 +2606,7 @@ export default function App() {
                             </div>
                             {/* Filter bar */}
                             <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 flex gap-2 overflow-x-auto">
-                                {(['ALL', 'DEPOSIT', 'WITHDRAWAL', 'BUY', 'SELL'] as const).map(f => (
+                                {(['ALL', 'DEPOSIT', 'WITHDRAWAL', 'BUY', 'SELL', 'DIVIDEND', 'EXPENSE'] as const).map(f => (
                                     <button key={f} onClick={() => setJournalFilter(f)}
                                         className={`text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap transition-all ${journalFilter === f ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}>
                                         {f === 'ALL' ? 'Tout' : f}
@@ -2354,6 +2788,18 @@ export default function App() {
                         </div>
                     )}
 
+                    {/* ANALYSIS VIEW */}
+                    {view === 'analysis' && (
+                        <PortfolioAnalysis
+                            assets={assets}
+                            assetPrices={assetPrices}
+                            navHistory={navHistory}
+                            clubCurrency={activeClub.currency}
+                            cashBalance={activeClub.cash_balance}
+                            darkMode={darkMode}
+                        />
+                    )}
+
                     {/* GUIDE VIEW */}
                     {view === 'guide' && <GuideView />}
 
@@ -2374,6 +2820,29 @@ export default function App() {
                                     </div>
                                 </div>
                             </Card>
+
+                            {/* Quorum setting */}
+                            <Card>
+                                <h3 className="font-bold mb-2 text-slate-900 dark:text-white">Seuil de Quorum</h3>
+                                <p className="text-sm text-slate-500 mb-4">
+                                    Participation minimale requise pour qu'un vote soit valide. Actuellement : <span className="font-bold text-slate-900 dark:text-white">{(activeClub as any).quorum_pct ?? 60}%</span>
+                                </p>
+                                <div className="flex gap-3">
+                                    <Input
+                                        type="number"
+                                        placeholder="Ex: 60"
+                                        value={quorumInput}
+                                        onChange={e => setQuorumInput(e.target.value)}
+                                        min="1" max="100"
+                                        className="max-w-[120px]"
+                                    />
+                                    <Button variant="secondary" onClick={handleUpdateQuorum} disabled={!quorumInput}>
+                                        Mettre à jour
+                                    </Button>
+                                </div>
+                            </Card>
+
+                            {/* Freeze NAV */}
                             <Card>
                                 <h3 className="font-bold mb-2 text-slate-900 dark:text-white">Figer la Quote-part</h3>
                                 <p className="text-sm text-slate-500 mb-4">Enregistre un point dans l'historique avec la NAV actuelle ({portfolioSummary.navPerShare.toFixed(2)} {activeClub.currency}). À faire régulièrement (mensuel recommandé).</p>
@@ -2381,14 +2850,85 @@ export default function App() {
                                     {isLoading ? 'Enregistrement...' : freezeSuccess ? '✓ Figée !' : 'Figer la Quote-part'}
                                 </Button>
                             </Card>
+
+                            {/* Expenses */}
+                            <Card>
+                                <h3 className="font-bold mb-2 text-slate-900 dark:text-white">Enregistrer une Dépense</h3>
+                                <p className="text-sm text-slate-500 mb-4">Frais de courtage, abonnements, frais de tenue de compte — déduits du cash.</p>
+                                <div className="grid md:grid-cols-3 gap-3">
+                                    <div className="relative">
+                                        <Input type="number" placeholder="Montant" value={expenseForm.amount} onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))} min="0" step="0.01" />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">{activeClub.currency}</span>
+                                    </div>
+                                    <Input placeholder="Description (ex: Frais IB)" value={expenseForm.description} onChange={e => setExpenseForm(f => ({ ...f, description: e.target.value }))} className="md:col-span-1" />
+                                    <Button variant="secondary" onClick={handleAddExpense} disabled={isAddingExpense || !expenseForm.amount || !expenseForm.description}>
+                                        {isAddingExpense ? '...' : '+ Dépense'}
+                                    </Button>
+                                </div>
+                            </Card>
+
+                            {/* Audit log */}
+                            <Card className="p-0 overflow-hidden">
+                                <div className="p-6 border-b border-slate-100 dark:border-slate-800">
+                                    <h3 className="font-bold text-slate-900 dark:text-white">Journal d'Audit</h3>
+                                    <p className="text-xs text-slate-400 mt-0.5">Historique des actions administratives.</p>
+                                </div>
+                                {auditLog.length === 0 ? (
+                                    <p className="text-sm text-slate-400 text-center py-8">Aucune entrée d'audit.</p>
+                                ) : (
+                                    <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-64 overflow-y-auto">
+                                        {auditLog.map(entry => (
+                                            <div key={entry.id} className="px-6 py-3 flex justify-between items-center text-sm">
+                                                <div>
+                                                    <span className="font-mono font-bold text-slate-900 dark:text-white text-xs bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded mr-2">{entry.action}</span>
+                                                    <span className="text-slate-500">{entry.user_name || '—'}</span>
+                                                </div>
+                                                <span className="text-xs text-slate-400">{new Date(entry.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </Card>
+
+                            {/* Danger zone */}
                             <Card className="border border-red-100 dark:border-red-900/40">
                                 <h3 className="font-bold mb-2 text-red-600 dark:text-red-400">Zone dangereuse</h3>
-                                <p className="text-sm text-slate-500 mb-4">
-                                    Réinitialise toutes les données financières du club (dépôts, actifs, historique NAV, parts). Les membres restent dans le club. Action irréversible.
-                                </p>
-                                <Button variant="danger" onClick={() => { setResetError(null); setResetPassword(''); setModal({ type: 'resetClub' }); }}>
-                                    Réinitialiser le club
-                                </Button>
+                                <div className="space-y-3">
+                                    <div>
+                                        <p className="text-sm text-slate-500 mb-3">
+                                            Réinitialise toutes les données financières du club. Les membres restent dans le club. Action irréversible.
+                                        </p>
+                                        <Button variant="danger" onClick={() => { setResetError(null); setResetPassword(''); setModal({ type: 'resetClub' }); }}>
+                                            Réinitialiser le club
+                                        </Button>
+                                    </div>
+                                    <div className="border-t border-red-100 dark:border-red-900/30 pt-3">
+                                        <p className="text-sm text-slate-500 mb-3">
+                                            <strong className="text-red-600 dark:text-red-400">Dissoudre le club</strong> — liquide tous les actifs, distribue le cash aux membres pro-rata, archive le club définitivement.
+                                        </p>
+                                        {dissolutionStep === 0 ? (
+                                            <Button variant="danger" onClick={() => setDissolutionStep(1)}>
+                                                Dissoudre le club
+                                            </Button>
+                                        ) : (
+                                            <div className="space-y-3 p-4 bg-red-50 dark:bg-red-900/20 rounded-2xl border border-red-200 dark:border-red-800">
+                                                <p className="text-sm font-semibold text-red-700 dark:text-red-400">Confirmation requise — cette action est irréversible.</p>
+                                                <p className="text-xs text-red-600 dark:text-red-400">
+                                                    Cash total à distribuer : <span className="font-mono font-bold">
+                                                        {(activeClub.cash_balance + assets.reduce((s, a) => s + a.quantity * (assetPrices[a.ticker] || a.avg_buy_price) * convertCurrency(1, a.currency, activeClub.currency), 0)).toFixed(2)} {activeClub.currency}
+                                                    </span>
+                                                </p>
+                                                <Input type="password" placeholder="Mot de passe pour confirmer" value={dissolutionPassword} onChange={e => setDissolutionPassword(e.target.value)} />
+                                                <div className="flex gap-2">
+                                                    <Button variant="outline" onClick={() => { setDissolutionStep(0); setDissolutionPassword(''); }}>Annuler</Button>
+                                                    <Button variant="danger" onClick={handleDissolve} disabled={isDissolving || !dissolutionPassword}>
+                                                        {isDissolving ? 'Dissolution...' : 'Confirmer la dissolution'}
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </Card>
                         </div>
                     )}
@@ -2447,6 +2987,31 @@ export default function App() {
                         <option value="ALL">Tous les membres (même montant chacun)</option>
                         {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
                     </select>
+                    {/* Annual contribution limit indicator */}
+                    {depositMemberId && depositMemberId !== 'ALL' && (() => {
+                        const m = members.find(mem => mem.id === depositMemberId);
+                        if (!m) return null;
+                        const year = new Date().getFullYear();
+                        const annualTotal = transactions
+                            .filter(t => t.type === 'DEPOSIT' && t.user_id === m.user_id && new Date(t.created_at).getFullYear() === year)
+                            .reduce((sum, t) => sum + t.amount_fiat, 0);
+                        const cap = 5500;
+                        const pct = Math.min(100, (annualTotal / cap) * 100);
+                        const isOver = annualTotal >= cap;
+                        const isWarning = pct >= 80;
+                        return (
+                            <div className={`p-3 rounded-xl text-xs border ${isOver ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400' : isWarning ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'}`}>
+                                <div className="flex justify-between mb-1.5">
+                                    <span>Versements {year} ({m.full_name.split(' ')[0]})</span>
+                                    <span className="font-mono font-bold">{annualTotal.toFixed(0)} € / {cap} €</span>
+                                </div>
+                                <div className="h-1.5 bg-white/50 dark:bg-slate-700 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full transition-all ${isOver ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
+                                </div>
+                                {isOver && <p className="mt-1 font-semibold">⚠️ Plafond BOFIP atteint pour {year}.</p>}
+                            </div>
+                        );
+                    })()}
                     <div className="relative">
                         <Input type="number" placeholder="Montant" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleDeposit()} min="0" step="0.01" />
                         <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{activeClub.currency}</span>
