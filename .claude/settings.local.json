@@ -60,7 +60,8 @@
       "Bash(scoop --version)",
       "Bash(supabase functions:*)",
       "Bash(~/.scoop/shims/supabase.exe functions:*)",
-      "Bash(\"/c/Users/Clement VENOT/scoop/apps/supabase/2.78.1/supabase.exe\" functions deploy get-chart-data)"
+      "Bash(\"/c/Users/Clement VENOT/scoop/apps/supabase/2.78.1/supabase.exe\" functions deploy get-chart-data)",
+      "Bash(\"/c/Users/Clement VENOT/scoop/apps/supabase/2.78.1/supabase.exe\" functions list)"
     ]
   }
 }
