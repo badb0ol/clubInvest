@@ -1962,10 +1962,30 @@ export default function App() {
     }
 
     if (view === 'landing') {
+        const marqueeItems = [
+            'Quote-part NAV en temps réel',
+            'PFU 31,4 % calculé automatiquement',
+            'Votes & quorum configurable',
+            'Historique de performance complet',
+            'Analyse IA du portefeuille',
+            'Chat & annonces d\'équipe',
+            'Alertes de prix',
+            'Dividendes tracés',
+            'Invitations par email',
+            'Export CSV',
+            'Report d\'imposition',
+            'Haute liquidité mark',
+        ];
         return (
-            <div className="min-h-screen bg-[#0a0a0a] flex flex-col relative overflow-hidden animate-in fade-in duration-700">
-                {/* Subtle radial glow */}
-                <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 0%, rgba(16,185,129,0.08) 0%, transparent 70%)' }} />
+            <div className="min-h-screen bg-[#0a0a0a] flex flex-col relative overflow-hidden">
+                <style>{`
+                  @keyframes marquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+                  .marquee-track { animation: marquee 32s linear infinite; }
+                  .marquee-track:hover { animation-play-state: paused; }
+                `}</style>
+
+                {/* Glow */}
+                <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(16,185,129,0.06) 0%, transparent 65%)' }} />
 
                 {/* Top bar */}
                 <div className="relative z-10 flex justify-between items-center px-6 py-5 md:px-12">
@@ -1988,54 +2008,50 @@ export default function App() {
                 </div>
 
                 {/* Hero */}
-                <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-6 py-16">
-                    {/* Status pill */}
-                    <div className="mb-8 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-6 pt-12 pb-8">
+                    <div className="mb-8 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-zinc-800 bg-zinc-900/60">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        <span className="text-emerald-400 text-xs font-semibold tracking-widest uppercase">Pour clubs d'investissement · France</span>
+                        <span className="text-zinc-400 text-xs font-medium tracking-wide">Conçu pour les clubs d'investissement en France</span>
                     </div>
 
-                    <h1 className="text-5xl sm:text-7xl md:text-8xl font-black text-white tracking-tighter leading-none mb-6">
+                    <h1 className="text-5xl sm:text-7xl md:text-8xl font-black text-white tracking-tighter leading-none mb-8">
                         Investissez<br />
                         <span className="text-transparent bg-clip-text" style={{ backgroundImage: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)' }}>ensemble.</span>
                     </h1>
 
-                    <p className="text-zinc-400 max-w-md mb-4 text-lg leading-relaxed">
-                        La plateforme complète pour gérer votre club : quote-parts, portefeuille, votes, chat et analyses IA.
+                    <p className="text-zinc-400 max-w-sm mb-3 text-base leading-relaxed">
+                        Chaque membre cotise. Chaque euro est tracé. Chaque décision se vote.
                     </p>
-                    <p className="text-zinc-600 text-sm mb-12 max-w-sm">Report d'imposition · PFU 31,4 % calculé · Benchmark S&P 500 & CAC 40</p>
+                    <p className="text-zinc-600 text-sm mb-10 max-w-xs leading-relaxed">
+                        Quote-parts au prorata, fiscalité française intégrée,<br />décisions collectives — sans tableur partagé.
+                    </p>
 
-                    {/* Feature pills */}
-                    <div className="flex flex-wrap justify-center gap-2 mb-12 max-w-lg">
-                        {[
-                            { icon: '📈', label: 'NAV en temps réel' },
-                            { icon: '✨', label: 'Analyse IA Gemini' },
-                            { icon: '🗳️', label: 'Votes & Propositions' },
-                            { icon: '💬', label: 'Chat temps réel' },
-                            { icon: '⚖️', label: 'Fiscalité automatique' },
-                            { icon: '📊', label: 'Graphiques performance' },
-                        ].map(f => (
-                            <span key={f.label} className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-full text-xs font-medium text-zinc-400">
-                                <span>{f.icon}</span>{f.label}
-                            </span>
-                        ))}
-                    </div>
-
-                    {/* CTA */}
                     <button
                         onClick={() => { if (!session) setView('auth'); else if (!activeClub) setView('onboarding'); else setView('dashboard'); }}
-                        className="group relative px-10 py-4 rounded-full font-bold text-base bg-white text-black hover:bg-zinc-100 active:scale-95 transition-all shadow-2xl shadow-white/10"
+                        className="group px-10 py-4 rounded-full font-bold text-base bg-white text-black hover:bg-zinc-100 active:scale-95 transition-all shadow-2xl shadow-white/5 mb-4"
                     >
                         Commencer gratuitement
                         <span className="ml-2 group-hover:translate-x-1 inline-block transition-transform">→</span>
                     </button>
-                    <p className="mt-4 text-xs text-zinc-700">Gratuit · Aucune carte bancaire requise</p>
+                    <p className="text-xs text-zinc-700">Gratuit · Aucune carte bancaire requise</p>
+                </div>
+
+                {/* Marquee band */}
+                <div className="relative z-10 border-y border-zinc-900 overflow-hidden py-3 my-4">
+                    <div className="marquee-track flex gap-0 whitespace-nowrap w-max">
+                        {[...marqueeItems, ...marqueeItems].map((item, i) => (
+                            <span key={i} className="inline-flex items-center gap-3 px-6 text-xs font-medium text-zinc-500 uppercase tracking-widest">
+                                {item}
+                                <span className="text-zinc-800">·</span>
+                            </span>
+                        ))}
+                    </div>
                 </div>
 
                 {/* Bottom footer */}
-                <div className="relative z-10 border-t border-zinc-900 px-6 py-4 flex justify-between items-center">
-                    <span className="text-zinc-700 text-xs">© 2025 ClubInvest</span>
-                    <span className="text-zinc-700 text-xs">Données à titre indicatif · Pas de conseil financier</span>
+                <div className="relative z-10 px-6 py-4 flex justify-between items-center">
+                    <span className="text-zinc-800 text-xs">© 2026 ClubInvest</span>
+                    <span className="text-zinc-800 text-xs">Données indicatives · Pas de conseil financier</span>
                 </div>
             </div>
         );
