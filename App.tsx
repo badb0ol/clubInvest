@@ -187,6 +187,7 @@ const AuthScreen: React.FC<{ onAuthSuccess: () => void; onBack: () => void }> = 
     const [signupEmail, setSignupEmail] = useState('');
     const [signupUsername, setSignupUsername] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -250,14 +251,22 @@ const AuthScreen: React.FC<{ onAuthSuccess: () => void; onBack: () => void }> = 
                 {error && <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl border border-red-100 dark:border-red-800">{error}</div>}
                 <div className="space-y-3" onKeyDown={handleKeyDown}>
                     {isLogin ? (
-                        <Input type="text" placeholder="Email ou Pseudo" value={loginIdentifier} onChange={e => setLoginIdentifier(e.target.value)} autoComplete="username" />
+                        <Input type="text" placeholder="Email ou pseudo" value={loginIdentifier} onChange={e => setLoginIdentifier(e.target.value)} autoComplete="username" />
                     ) : (
                         <>
-                            <Input type="text" placeholder="Pseudo de connexion" value={signupUsername} onChange={e => setSignupUsername(e.target.value)} />
+                            <div className="relative">
+                                <Input type="text" placeholder="Pseudo (ex: jean42)" value={signupUsername} onChange={e => setSignupUsername(e.target.value.replace(/\s/g, ''))} autoComplete="username" />
+                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400">utilisé pour se connecter</span>
+                            </div>
                             <Input type="email" placeholder="Email" value={signupEmail} onChange={e => setSignupEmail(e.target.value)} autoComplete="email" />
                         </>
                     )}
-                    <Input type="password" placeholder="Mot de passe" value={password} onChange={e => setPassword(e.target.value)} autoComplete={isLogin ? 'current-password' : 'new-password'} />
+                    <div className="relative">
+                        <Input type={showPassword ? 'text' : 'password'} placeholder="Mot de passe" value={password} onChange={e => setPassword(e.target.value)} autoComplete={isLogin ? 'current-password' : 'new-password'} />
+                        <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xs font-semibold select-none">
+                            {showPassword ? 'Cacher' : 'Voir'}
+                        </button>
+                    </div>
                     <Button className="w-full" onClick={handleAuth} disabled={loading}>
                         {loading ? 'Chargement...' : (isLogin ? 'Se connecter' : "S'inscrire")}
                     </Button>
@@ -439,6 +448,7 @@ export default function App() {
     const [isFetchingTradePrice, setIsFetchingTradePrice] = useState(false);
     const [tradeConfirmStep, setTradeConfirmStep] = useState(false);
     const [freezeSuccess, setFreezeSuccess] = useState(false);
+    const [balanceHidden, setBalanceHidden] = useState(false);
     const [isConnectingBank, setIsConnectingBank] = useState(false);
     const [resetPassword, setResetPassword] = useState('');
     const [resetError, setResetError] = useState<string | null>(null);
@@ -1506,7 +1516,7 @@ export default function App() {
                         </div>
                         <div className="min-w-0">
                             <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">{currentUserMember?.full_name}</div>
-                            <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{currentUserMember?.role === 'admin' ? 'Administrateur' : 'Membre'}</div>
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate font-mono">@{currentUserMember?.full_name?.toLowerCase().replace(/\s/g, '')} · {currentUserMember?.role === 'admin' ? 'Admin' : 'Membre'}</div>
                         </div>
                     </div>
                     <button onClick={() => setDarkMode(!darkMode)} className="flex items-center gap-3 text-sm font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors">
@@ -1588,12 +1598,22 @@ export default function App() {
                         <>
                             <div className="flex flex-col xl:flex-row justify-between items-center xl:items-end gap-8">
                                 <div className="text-center xl:text-left space-y-2">
-                                    <p className="text-slate-500 dark:text-slate-400 uppercase text-xs font-bold tracking-widest">Actif Net Total</p>
+                                    <div className="flex items-center justify-center xl:justify-start gap-2">
+                                        <p className="text-slate-500 dark:text-slate-400 uppercase text-xs font-bold tracking-widest">Actif Net Total</p>
+                                        <button onClick={() => setBalanceHidden(v => !v)} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors" title={balanceHidden ? 'Afficher' : 'Masquer'}>
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                {balanceHidden
+                                                    ? <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>
+                                                    : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>
+                                                }
+                                            </svg>
+                                        </button>
+                                    </div>
                                     <h1 className="text-5xl md:text-7xl font-black text-slate-900 dark:text-white leading-none tracking-tight">
-                                        {portfolioSummary.totalNetAssets.toLocaleString('fr-FR', { style: 'currency', currency: activeClub.currency })}
+                                        {balanceHidden ? <span className="tracking-widest opacity-30">••••••</span> : portfolioSummary.totalNetAssets.toLocaleString('fr-FR', { style: 'currency', currency: activeClub.currency })}
                                     </h1>
                                     <p className="text-slate-500 text-sm">
-                                        Quote-part : <span className="font-bold text-slate-900 dark:text-white">{portfolioSummary.navPerShare.toFixed(2)} {activeClub.currency}</span>
+                                        Quote-part : <span className="font-bold text-slate-900 dark:text-white">{balanceHidden ? '••••' : `${portfolioSummary.navPerShare.toFixed(2)} ${activeClub.currency}`}</span>
                                     </p>
                                 </div>
 
