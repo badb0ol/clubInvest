@@ -19,7 +19,7 @@ const AVAILABLE_BANKS = [
 ];
 
 type TimeRange = '1J' | '1S' | '1M' | '1A' | 'MAX';
-type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' | 'members' | 'journal' | 'chat' | 'guide' | 'votes' | 'admin' | 'analysis';
+type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' | 'members' | 'journal' | 'chat' | 'guide' | 'votes' | 'admin' | 'analysis' | 'settings';
 type ModalType = 'addMember' | 'deposit' | 'trade' | 'connectBank' | 'withdraw' | 'kickConfirm' | 'resetClub' | null;
 
 // --- INLINE NOTIFICATION ---
@@ -506,6 +506,13 @@ export default function App() {
     // Ticker search autocomplete
     const [tickerSearchResults, setTickerSearchResults] = useState<{ symbol: string; instrument_name: string }[]>([]);
     const [showTickerDropdown, setShowTickerDropdown] = useState(false);
+
+    // Mobile "more" menu
+    const [showMobileMore, setShowMobileMore] = useState(false);
+
+    // User settings state
+    const [settingsName, setSettingsName] = useState('');
+    const [isSavingSettings, setIsSavingSettings] = useState(false);
 
     // Dividends
     const [dividends, setDividends] = useState<DividendEntry[]>([]);
@@ -1443,6 +1450,22 @@ export default function App() {
         }
     };
 
+    // --- USER SETTINGS ---
+    const handleSaveSettings = async () => {
+        if (!session || !currentUserMember || !settingsName.trim()) return;
+        setIsSavingSettings(true);
+        try {
+            await supabase.from('profiles').upsert({ id: session.user.id, full_name: settingsName.trim() });
+            await supabase.from('club_members').update({ full_name: settingsName.trim() }).eq('user_id', session.user.id);
+            setCurrentUserMember(m => m ? { ...m, full_name: settingsName.trim() } : m);
+            notify('Profil mis à jour.');
+        } catch {
+            notify('Erreur lors de la mise à jour.', 'error');
+        } finally {
+            setIsSavingSettings(false);
+        }
+    };
+
     // --- TICKER AUTOCOMPLETE ---
     useEffect(() => {
         if (!tradeTicker || tradeTicker.length < 2) {
@@ -1874,21 +1897,21 @@ export default function App() {
                         )}
                     </nav>
                 </div>
-                <div className="p-10 space-y-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 shrink-0">
+                <div className="p-10 space-y-3">
+                    <button onClick={() => setView('settings')} className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all hover:bg-slate-50 dark:hover:bg-slate-900/50 ${view === 'settings' ? 'bg-slate-100 dark:bg-slate-900' : ''}`}>
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-xs font-bold text-white shrink-0">
                             {currentUserMember?.full_name?.charAt(0)?.toUpperCase() || '?'}
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 text-left">
                             <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">{currentUserMember?.full_name}</div>
-                            <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate font-mono">@{currentUserMember?.full_name?.toLowerCase().replace(/\s/g, '')} · {currentUserMember?.role === 'admin' ? 'Admin' : 'Membre'}</div>
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{currentUserMember?.role === 'admin' ? 'Admin' : 'Membre'} · Mon profil</div>
                         </div>
-                    </div>
-                    <button onClick={() => setDarkMode(!darkMode)} className="flex items-center gap-3 text-sm font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors">
+                    </button>
+                    <button onClick={() => setDarkMode(!darkMode)} className="flex items-center gap-3 text-sm font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors px-3">
                         <Icon name={darkMode ? 'sun' : 'moon'} className="w-5 h-5" />
                         {darkMode ? 'Mode Clair' : 'Mode Sombre'}
                     </button>
-                    <button onClick={() => supabase.auth.signOut()} className="text-red-500 text-sm font-bold hover:text-red-600 transition-colors flex items-center gap-2">
+                    <button onClick={() => supabase.auth.signOut()} className="text-red-500 text-sm font-bold hover:text-red-600 transition-colors flex items-center gap-2 px-3">
                         <Icon name="logout" className="w-4 h-4" />
                         Se Déconnecter
                     </button>
@@ -1896,38 +1919,61 @@ export default function App() {
             </aside>
 
             {/* MOBILE TOP HEADER */}
-            <header className="md:hidden fixed top-0 w-full z-40 bg-white/80 dark:bg-black/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 p-4 flex justify-between items-center">
-                <Logo className="w-auto h-8" onClick={() => setView('dashboard')} />
-                <div className="flex items-center gap-1">
-                    <button onClick={() => setView('analysis')} className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${view === 'analysis' ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`} title="Analyse">
-                        <Icon name="pie" className="w-5 h-5" />
-                    </button>
-                    <button onClick={() => setView('members')} className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${view === 'members' ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`} title="Membres">
-                        <Icon name="users" className="w-5 h-5" />
-                    </button>
-                    <button onClick={() => setView('guide')} className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${view === 'guide' ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`} title="Guide">
-                        <Icon name="guide" className="w-5 h-5" />
-                    </button>
-                    <button onClick={() => { setShowNotifications(v => !v); handleMarkAllRead(); }} className="relative p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-400" title="Notifications">
+            <header className="md:hidden fixed top-0 w-full z-40 bg-white/80 dark:bg-black/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 h-14 flex justify-between items-center">
+                <Logo className="w-auto h-7" onClick={() => setView('dashboard')} />
+                <div className="flex items-center gap-0.5">
+                    <button onClick={() => { setShowNotifications(v => !v); handleMarkAllRead(); }} className="relative p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-400">
                         <Icon name="bell" className="w-5 h-5" />
                         {unreadNotifCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-black" />}
                     </button>
-                    <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-400">
-                        <Icon name={darkMode ? 'sun' : 'moon'} className="w-5 h-5" />
-                    </button>
-                    <button onClick={() => supabase.auth.signOut()} className="p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-red-500">
-                        <Icon name="logout" className="w-5 h-5" />
+                    <button onClick={() => setView('settings')} className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${view === 'settings' ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                            {currentUserMember?.full_name?.charAt(0)?.toUpperCase() || '?'}
+                        </div>
                     </button>
                 </div>
             </header>
 
+            {/* MOBILE "MORE" DRAWER */}
+            {showMobileMore && (
+                <div className="md:hidden fixed inset-0 z-[55] flex items-end">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowMobileMore(false)} />
+                    <div className="relative w-full bg-white dark:bg-slate-900 rounded-t-3xl p-6 pb-8 z-10 border-t border-slate-200 dark:border-slate-800">
+                        <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-6" />
+                        <div className="grid grid-cols-3 gap-3">
+                            {[
+                                { id: 'members', label: 'Membres', icon: 'users' },
+                                { id: 'analysis', label: 'Analyse', icon: 'pie' },
+                                { id: 'guide', label: 'Guide', icon: 'guide' },
+                                { id: 'settings', label: 'Mon Profil', icon: 'settings' },
+                                ...(isAdmin ? [{ id: 'admin', label: 'Admin', icon: 'settings' }] : []),
+                            ].map(item => (
+                                <button key={item.id} onClick={() => { setView(item.id as ViewState); setShowMobileMore(false); }}
+                                    className={`flex flex-col items-center gap-2 p-4 rounded-2xl transition-all ${view === item.id ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
+                                    <Icon name={item.icon as any} className="w-6 h-6" />
+                                    <span className="text-[11px] font-bold">{item.label}</span>
+                                </button>
+                            ))}
+                            <button onClick={() => { setDarkMode(v => !v); }} className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                                <Icon name={darkMode ? 'sun' : 'moon'} className="w-6 h-6" />
+                                <span className="text-[11px] font-bold">{darkMode ? 'Mode Clair' : 'Sombre'}</span>
+                            </button>
+                            <button onClick={() => supabase.auth.signOut()} className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 text-red-500">
+                                <Icon name="logout" className="w-6 h-6" />
+                                <span className="text-[11px] font-bold">Déconnexion</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* MOBILE BOTTOM NAV */}
             <nav className="md:hidden fixed bottom-0 w-full z-50 bg-white/90 dark:bg-black/90 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 pb-safe">
-                <div className="flex items-center px-1 py-1">
+                <div className="flex items-center px-2 py-1">
                     {menuItems.map(item => (
                         <button
                             key={item.id}
-                            onClick={() => setView(item.id as ViewState)}
+                            onClick={() => { setView(item.id as ViewState); setShowMobileMore(false); }}
                             className={`flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all ${view === item.id ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}
                         >
                             <div className="relative mb-0.5">
@@ -1941,12 +1987,11 @@ export default function App() {
                             <span className="text-[9px] font-bold leading-none">{item.shortLabel}</span>
                         </button>
                     ))}
-                    {isAdmin && (
-                        <button onClick={() => setView('admin')} className={`flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all ${view === 'admin' ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}>
-                            <Icon name="settings" className="w-5 h-5 mb-0.5" />
-                            <span className="text-[9px] font-bold leading-none">Admin</span>
-                        </button>
-                    )}
+                    <button onClick={() => setShowMobileMore(v => !v)}
+                        className={`flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all ${showMobileMore ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}>
+                        <Icon name="menu" className="w-5 h-5 mb-0.5" />
+                        <span className="text-[9px] font-bold leading-none">Plus</span>
+                    </button>
                 </div>
             </nav>
 
@@ -2802,6 +2847,120 @@ export default function App() {
 
                     {/* GUIDE VIEW */}
                     {view === 'guide' && <GuideView />}
+
+                    {/* SETTINGS VIEW */}
+                    {view === 'settings' && (
+                        <div className="space-y-6 max-w-lg">
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Mon Profil</h2>
+                                <p className="text-sm text-slate-500 mt-1">Gérez vos informations personnelles.</p>
+                            </div>
+
+                            {/* Profile card */}
+                            <Card>
+                                <div className="flex items-center gap-4 mb-6">
+                                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-2xl font-black text-white">
+                                        {currentUserMember?.full_name?.charAt(0)?.toUpperCase() || '?'}
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-lg text-slate-900 dark:text-white">{currentUserMember?.full_name}</div>
+                                        <div className="text-xs text-slate-400 font-mono">{session?.user.email}</div>
+                                        <Badge type={currentUserMember?.role === 'admin' ? 'positive' : 'neutral'} className="mt-1">
+                                            {currentUserMember?.role === 'admin' ? 'Admin' : 'Membre'}
+                                        </Badge>
+                                    </div>
+                                </div>
+                                <div className="space-y-3">
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest">Nom affiché</label>
+                                    <Input
+                                        type="text"
+                                        placeholder="Votre nom"
+                                        value={settingsName || currentUserMember?.full_name || ''}
+                                        onChange={e => setSettingsName(e.target.value)}
+                                    />
+                                    <Button variant="primary" onClick={handleSaveSettings} disabled={isSavingSettings || !settingsName.trim()}>
+                                        {isSavingSettings ? 'Enregistrement...' : 'Enregistrer'}
+                                    </Button>
+                                </div>
+                            </Card>
+
+                            {/* Club membership summary */}
+                            <Card>
+                                <h3 className="font-bold text-slate-900 dark:text-white mb-4">Ma présence dans le club</h3>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center py-3 border-b border-slate-100 dark:border-slate-800">
+                                        <span className="text-sm text-slate-500">Club</span>
+                                        <span className="text-sm font-semibold text-slate-900 dark:text-white">{activeClub?.name}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-3 border-b border-slate-100 dark:border-slate-800">
+                                        <span className="text-sm text-slate-500">Membre depuis</span>
+                                        <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                                            {currentUserMember?.joined_at ? new Date(currentUserMember.joined_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-3 border-b border-slate-100 dark:border-slate-800">
+                                        <span className="text-sm text-slate-500">Parts détenues</span>
+                                        <span className="text-sm font-semibold font-mono text-slate-900 dark:text-white">{currentUserMember?.shares_owned?.toFixed(4) || '0'}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-3 border-b border-slate-100 dark:border-slate-800">
+                                        <span className="text-sm text-slate-500">Total investi</span>
+                                        <span className="text-sm font-semibold font-mono text-slate-900 dark:text-white">{currentUserMember?.total_invested_fiat?.toFixed(2) || '0'} {activeClub?.currency}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-3">
+                                        <span className="text-sm text-slate-500">Valeur actuelle des parts</span>
+                                        <span className="text-sm font-semibold font-mono text-emerald-600 dark:text-emerald-400">
+                                            {activeClub && currentUserMember
+                                                ? ((currentUserMember.shares_owned || 0) * (activeClub.total_shares > 0
+                                                    ? (activeClub.cash_balance + assets.reduce((s, a) => s + (assetPrices[a.ticker] || a.avg_buy_price) * a.quantity * convertCurrency(1, a.currency, activeClub.currency), 0) - activeClub.tax_liability) / activeClub.total_shares
+                                                    : 100)).toFixed(2)
+                                                : '0'} {activeClub?.currency}
+                                        </span>
+                                    </div>
+                                </div>
+                            </Card>
+
+                            {/* Activity history */}
+                            <Card>
+                                <h3 className="font-bold text-slate-900 dark:text-white mb-4">Mes dernières opérations</h3>
+                                {transactions.filter(t => t.user_id === session?.user.id).length === 0 ? (
+                                    <p className="text-sm text-slate-400 text-center py-4">Aucune opération personnelle.</p>
+                                ) : (
+                                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                                        {transactions.filter(t => t.user_id === session?.user.id).slice(0, 10).map(t => (
+                                            <div key={t.id} className="py-3 flex justify-between items-center">
+                                                <div>
+                                                    <div className="text-sm font-semibold text-slate-900 dark:text-white">{t.type} {t.asset_ticker ? `· ${t.asset_ticker}` : ''}</div>
+                                                    <div className="text-xs text-slate-400">{new Date(t.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                                                </div>
+                                                <span className={`text-sm font-mono font-bold ${t.type === 'DEPOSIT' || t.type === 'DIVIDEND' ? 'text-emerald-500' : t.type === 'WITHDRAWAL' ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
+                                                    {t.type === 'DEPOSIT' || t.type === 'DIVIDEND' ? '+' : t.type === 'WITHDRAWAL' ? '−' : ''}{t.amount_fiat?.toFixed(2)} {activeClub?.currency}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </Card>
+
+                            {/* Theme toggle */}
+                            <Card>
+                                <h3 className="font-bold text-slate-900 dark:text-white mb-4">Préférences</h3>
+                                <button onClick={() => setDarkMode(!darkMode)} className="flex items-center justify-between w-full">
+                                    <div className="flex items-center gap-3">
+                                        <Icon name={darkMode ? 'moon' : 'sun'} className="w-5 h-5 text-slate-500" />
+                                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Thème {darkMode ? 'sombre' : 'clair'} actif</span>
+                                    </div>
+                                    <div className={`w-10 h-6 rounded-full transition-colors ${darkMode ? 'bg-slate-900' : 'bg-slate-200'} flex items-center px-1`}>
+                                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${darkMode ? 'translate-x-4' : 'translate-x-0'}`} />
+                                    </div>
+                                </button>
+                            </Card>
+
+                            <Button variant="danger" onClick={() => supabase.auth.signOut()} className="w-full">
+                                <Icon name="logout" className="w-4 h-4" />
+                                Se déconnecter
+                            </Button>
+                        </div>
+                    )}
 
                     {/* ADMIN VIEW */}
                     {view === 'admin' && (

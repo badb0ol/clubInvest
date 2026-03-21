@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { Asset, NavEntry, TickerMetadata } from '../types';
 import { Card, Button, Badge } from './ui';
 import { fetchAssetHistory, fetchTickerMetadata, convertCurrency } from '../services/financeEngine';
@@ -88,8 +88,14 @@ export const PortfolioAnalysis: React.FC<Props> = ({
 
   // HHI & diversification score
   const nonCashWeights = weights.filter(w => w.ticker !== 'CASH').map(w => w.weight);
+  const cashWeight = weights.find(w => w.ticker === 'CASH')?.weight ?? 0;
+  const isCashDominated = cashWeight > 0.7;
   const hhi = useMemo(() => computeHHI(nonCashWeights), [nonCashWeights.join(',')]);
-  const diversificationScore = computeDiversificationScore(hhi);
+  // Penalize score when mostly cash — a cash-heavy portfolio isn't "diversified"
+  const rawDiversificationScore = computeDiversificationScore(hhi);
+  const diversificationScore = isCashDominated
+    ? Math.min(rawDiversificationScore, Math.round((1 - cashWeight) * 100))
+    : rawDiversificationScore;
 
   // Sector & country breakdowns
   const sectorData = useMemo(() => {
@@ -214,6 +220,14 @@ export const PortfolioAnalysis: React.FC<Props> = ({
             </Card>
           </div>
 
+          {/* Cash-dominated warning */}
+          {isCashDominated && (
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl">
+              <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-1">💰 Portefeuille majoritairement en liquidités ({(cashWeight * 100).toFixed(0)}%)</p>
+              <p className="text-xs text-blue-600 dark:text-blue-500">Le score de diversification reflète uniquement les actifs investis. Cliquez sur <strong>✨ IA</strong> pour obtenir des recommandations sur comment déployer ces liquidités selon le contexte de marché actuel.</p>
+            </div>
+          )}
+
           {/* Allocation table */}
           <Card className="p-0 overflow-hidden">
             <div className="p-6 border-b border-slate-100 dark:border-slate-800">
@@ -267,26 +281,33 @@ export const PortfolioAnalysis: React.FC<Props> = ({
           <h3 className="font-bold text-slate-900 dark:text-white mb-6">Répartition sectorielle</h3>
           {isLoadingMeta ? (
             <div className="h-48 flex items-center justify-center text-slate-400 animate-pulse">Chargement des données sectorielles...</div>
+          ) : sectorData.length === 0 ? (
+            <div className="text-center py-12 text-slate-400">
+              <p className="text-sm">Aucune donnée disponible.</p>
+            </div>
           ) : (
             <div className="grid md:grid-cols-2 gap-6 items-center">
-              <ResponsiveContainer width="100%" height={280}>
+              <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
-                  <Pie data={sectorData} cx="50%" cy="50%" outerRadius={110} dataKey="value" nameKey="name" label={({ name, value }) => `${value}%`} labelLine={false}>
+                  <Pie data={sectorData} cx="50%" cy="50%" outerRadius={100} innerRadius={40} dataKey="value" nameKey="name" paddingAngle={2}>
                     {sectorData.map((_, i) => <Cell key={i} fill={SECTOR_COLORS[i % SECTOR_COLORS.length]} />)}
                   </Pie>
-                  <Tooltip formatter={(v: number) => `${v}%`} contentStyle={{ backgroundColor: darkMode ? '#1e293b' : '#fff', borderRadius: '12px', border: '1px solid #334155' }} />
+                  <Tooltip
+                    formatter={(v: number, name: string) => [`${v.toFixed(1)}%`, name]}
+                    contentStyle={{ backgroundColor: darkMode ? '#1e293b' : '#fff', borderRadius: '12px', border: '1px solid #334155', fontSize: '12px' }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-3">
-                {sectorData.sort((a, b) => b.value - a.value).map((s, i) => (
+                {[...sectorData].sort((a, b) => b.value - a.value).map((s, i) => (
                   <div key={s.name} className="flex items-center gap-3">
                     <div className="w-3 h-3 rounded-full shrink-0" style={{ background: SECTOR_COLORS[i % SECTOR_COLORS.length] }} />
                     <div className="flex-1 min-w-0 truncate text-sm font-medium text-slate-700 dark:text-slate-300">{s.name}</div>
                     <div className="flex items-center gap-2">
                       <div className="w-20 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${s.value}%`, background: SECTOR_COLORS[i % SECTOR_COLORS.length] }} />
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(s.value, 100)}%`, background: SECTOR_COLORS[i % SECTOR_COLORS.length] }} />
                       </div>
-                      <span className="text-xs font-mono font-bold text-slate-900 dark:text-white w-12 text-right">{s.value}%</span>
+                      <span className="text-xs font-mono font-bold text-slate-900 dark:text-white w-12 text-right">{s.value.toFixed(1)}%</span>
                     </div>
                   </div>
                 ))}
@@ -294,7 +315,9 @@ export const PortfolioAnalysis: React.FC<Props> = ({
             </div>
           )}
           {sectorData.some(s => s.name === 'Inconnu' && s.value > 20) && (
-            <p className="text-xs text-slate-400 mt-4">Certains actifs n'ont pas de métadonnées disponibles. Vérifiez votre clé API Twelve Data.</p>
+            <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
+              <p className="text-xs text-amber-600 dark:text-amber-400">Certains actifs n'ont pas de métadonnées sectorielles — ils apparaissent en "Inconnu". Assurez-vous que votre clé API Twelve Data est configurée.</p>
+            </div>
           )}
         </Card>
       )}
@@ -305,26 +328,33 @@ export const PortfolioAnalysis: React.FC<Props> = ({
           <h3 className="font-bold text-slate-900 dark:text-white mb-6">Répartition géographique</h3>
           {isLoadingMeta ? (
             <div className="h-48 flex items-center justify-center text-slate-400 animate-pulse">Chargement...</div>
+          ) : countryData.filter(c => c.name !== 'N/A').length === 0 ? (
+            <div className="text-center py-12 text-slate-400">
+              <p className="text-sm">Aucune donnée géographique disponible.</p>
+            </div>
           ) : (
             <div className="grid md:grid-cols-2 gap-6 items-center">
-              <ResponsiveContainer width="100%" height={280}>
+              <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
-                  <Pie data={countryData} cx="50%" cy="50%" outerRadius={110} dataKey="value" nameKey="name" label={({ name, value }) => `${value}%`} labelLine={false}>
-                    {countryData.map((_, i) => <Cell key={i} fill={SECTOR_COLORS[i % SECTOR_COLORS.length]} />)}
+                  <Pie data={countryData.filter(c => c.name !== 'N/A')} cx="50%" cy="50%" outerRadius={100} innerRadius={40} dataKey="value" nameKey="name" paddingAngle={2}>
+                    {countryData.filter(c => c.name !== 'N/A').map((_, i) => <Cell key={i} fill={SECTOR_COLORS[i % SECTOR_COLORS.length]} />)}
                   </Pie>
-                  <Tooltip formatter={(v: number) => `${v}%`} contentStyle={{ backgroundColor: darkMode ? '#1e293b' : '#fff', borderRadius: '12px', border: '1px solid #334155' }} />
+                  <Tooltip
+                    formatter={(v: number, name: string) => [`${v.toFixed(1)}%`, name]}
+                    contentStyle={{ backgroundColor: darkMode ? '#1e293b' : '#fff', borderRadius: '12px', border: '1px solid #334155', fontSize: '12px' }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-3">
-                {countryData.sort((a, b) => b.value - a.value).map((c, i) => (
+                {[...countryData].filter(c => c.name !== 'N/A').sort((a, b) => b.value - a.value).map((c, i) => (
                   <div key={c.name} className="flex items-center gap-3">
                     <div className="w-3 h-3 rounded-full shrink-0" style={{ background: SECTOR_COLORS[i % SECTOR_COLORS.length] }} />
                     <div className="flex-1 min-w-0 truncate text-sm font-medium text-slate-700 dark:text-slate-300">{c.name}</div>
                     <div className="flex items-center gap-2">
                       <div className="w-20 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${c.value}%`, background: SECTOR_COLORS[i % SECTOR_COLORS.length] }} />
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(c.value, 100)}%`, background: SECTOR_COLORS[i % SECTOR_COLORS.length] }} />
                       </div>
-                      <span className="text-xs font-mono font-bold text-slate-900 dark:text-white w-12 text-right">{c.value}%</span>
+                      <span className="text-xs font-mono font-bold text-slate-900 dark:text-white w-12 text-right">{c.value.toFixed(1)}%</span>
                     </div>
                   </div>
                 ))}

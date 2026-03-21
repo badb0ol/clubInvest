@@ -75,22 +75,31 @@ export const generatePortfolioRecommendations = async (metrics: PortfolioMetrics
     ? `Highly correlated pairs (>0.8): ${metrics.highCorrelationPairs.map(p => `${p.a}/${p.b} (${p.correlation.toFixed(2)})`).join(', ')}.`
     : 'No highly correlated pairs detected.';
 
-  const prompt = `You are a portfolio analyst for a French investment club. Analyze ONLY the portfolio composition — do NOT comment on market trends, future stock movements, or external factors. Focus exclusively on structural analysis.
+  const prompt = `Tu es un analyste de portefeuille pour un club d'investissement français. Tu dois analyser la composition du portefeuille ET utiliser ta recherche web pour contextualiser avec les données de marché actuelles.
 
-Portfolio: ${assetList}
-Diversification score: ${metrics.diversificationScore.toFixed(0)}/100 (higher is better)
-HHI concentration index: ${metrics.hhi.toFixed(0)}/10000 (lower is better)
-Top sectors: ${topSectors || 'Unknown'}
-Top countries: ${topCountries || 'Unknown'}
-Sharpe ratio: ${metrics.sharpeRatio != null ? metrics.sharpeRatio.toFixed(2) : 'insufficient data'}
+Portefeuille: ${assetList}
+Score de diversification: ${metrics.diversificationScore.toFixed(0)}/100 (plus élevé = mieux)
+Indice HHI de concentration: ${metrics.hhi.toFixed(0)}/10000 (plus faible = mieux)
+Top secteurs: ${topSectors || 'Inconnu'}
+Top pays: ${topCountries || 'Inconnu'}
+Ratio de Sharpe: ${metrics.sharpeRatio != null ? metrics.sharpeRatio.toFixed(2) : 'données insuffisantes'}
 ${correlationNote}
 
-Provide 3-4 specific, actionable recommendations to improve diversification and reduce risk. Write in French. Be direct and quantitative. Do not suggest specific stocks to buy. Focus on: sector balance, geographic diversification, position sizing, and correlation risks.`;
+Instructions:
+1. Utilise Google Search pour vérifier les dernières performances et actualités des actifs listés
+2. Fournis 4-5 recommandations spécifiques et actionnables pour améliorer la diversification et réduire le risque
+3. Écris en français, sois direct et quantitatif
+4. Intègre le contexte de marché actuel (valorisation sectorielle, taux d'intérêt, cycle économique) dans tes recommandations
+5. Concentre-toi sur: équilibre sectoriel, diversification géographique, dimensionnement des positions, risques de corrélation, et niveau de liquidités optimal
+6. Si le portefeuille est majoritairement en liquidités, explique quelles classes d'actifs méritent d'être considérées selon le contexte macro actuel`;
 
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+      },
     });
     return response.text || "Analyse indisponible.";
   } catch {
