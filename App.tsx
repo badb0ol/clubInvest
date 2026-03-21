@@ -400,6 +400,7 @@ export default function App() {
     const [checkingMembership, setCheckingMembership] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isFetchingPrices, setIsFetchingPrices] = useState(false);
+    const [isLoadingData, setIsLoadingData] = useState(false);
 
     // App Data
     const [members, setMembers] = useState<Member[]>([]);
@@ -436,6 +437,7 @@ export default function App() {
     const [addMemberError, setAddMemberError] = useState<string | null>(null);
     const [memberToKick, setMemberToKick] = useState<Member | null>(null);
     const [isFetchingTradePrice, setIsFetchingTradePrice] = useState(false);
+    const [tradeConfirmStep, setTradeConfirmStep] = useState(false);
     const [freezeSuccess, setFreezeSuccess] = useState(false);
     const [isConnectingBank, setIsConnectingBank] = useState(false);
     const [resetPassword, setResetPassword] = useState('');
@@ -462,6 +464,9 @@ export default function App() {
     // Dividends
     const [dividends, setDividends] = useState<DividendEntry[]>([]);
 
+    // Journal filter
+    const [journalFilter, setJournalFilter] = useState<'ALL' | 'DEPOSIT' | 'WITHDRAWAL' | 'BUY' | 'SELL'>('ALL');
+
     // Chat state
     const [messages, setMessages] = useState<Message[]>([]);
     const [chatInput, setChatInput] = useState('');
@@ -484,12 +489,16 @@ export default function App() {
         setTradeTicker('');
         setTradeQty('');
         setTradePrice('');
+        setTradeCurrency('USD');
+        setTradeConfirmStep(false);
         setDepositAmount('');
         setWithdrawAmount('');
         setDepositMemberId('');
         setWithdrawMemberId('');
         setAddMemberEmail('');
         setMemberToKick(null);
+        setResetPassword('');
+        setResetError(null);
     };
 
     // --- DARK MODE ---
@@ -557,6 +566,7 @@ export default function App() {
     };
 
     const loadClubData = async (clubId: string) => {
+        setIsLoadingData(true);
         const [
             { data: club },
             { data: m },
@@ -576,6 +586,7 @@ export default function App() {
         setAssets(a || []);
         setTransactions(t || []);
         setNavHistory(n || []);
+        setIsLoadingData(false);
     };
 
     // --- LOAD MESSAGES ---
@@ -854,6 +865,15 @@ export default function App() {
         }
     };
 
+    const handleFetchTradePrice = async () => {
+        if (!tradeTicker.trim()) return;
+        setIsFetchingTradePrice(true);
+        const price = await fetchAssetPrice(tradeTicker.trim().toUpperCase());
+        if (price > 0) setTradePrice(price.toString());
+        else notify("Prix non trouvé pour ce ticker.", 'error');
+        setIsFetchingTradePrice(false);
+    };
+
     const handleTrade = async () => {
         setTradeError(null);
         if (!activeClub || !currentUserMember) return;
@@ -862,6 +882,9 @@ export default function App() {
         if (isNaN(qty) || qty <= 0) { setTradeError("Quantité invalide."); return; }
         if (isNaN(price) || price <= 0) { setTradeError("Prix invalide."); return; }
         if (!tradeTicker.trim()) { setTradeError("Ticker obligatoire."); return; }
+
+        // First click → show confirm step
+        if (!tradeConfirmStep) { setTradeConfirmStep(true); return; }
 
         setIsLoading(true);
         try {
@@ -1704,6 +1727,27 @@ export default function App() {
                     {/* PORTFOLIO VIEW */}
                     {view === 'portfolio' && (
                         <div className="space-y-6">
+                        {isLoadingData ? (
+                            <Card className="p-0 overflow-hidden">
+                                <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                                    <div className="h-5 w-24 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+                                </div>
+                                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                                    {[1,2,3].map(i => (
+                                        <div key={i} className="p-5 flex justify-between items-center">
+                                            <div className="space-y-2">
+                                                <div className="h-4 w-16 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+                                                <div className="h-3 w-28 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
+                                            </div>
+                                            <div className="space-y-2 text-right">
+                                                <div className="h-4 w-20 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+                                                <div className="h-3 w-12 bg-slate-100 dark:bg-slate-800 rounded animate-pulse ml-auto" />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </Card>
+                        ) : (
                         <Card className="p-0 overflow-hidden">
                             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
                                 <div>
@@ -1796,6 +1840,7 @@ export default function App() {
                                 </div>
                             </div>
                         </Card>
+                        )}
 
                         {/* PRICE ALERTS */}
                         <Card>
@@ -1925,7 +1970,12 @@ export default function App() {
                                             <div className="flex items-center gap-2">
                                                 <Badge type={statusColor}>{statusLabel}</Badge>
                                                 {isAdmin && p.status === 'approved' && (
-                                                    <Button variant="success" className="text-xs px-3 py-1.5 h-auto" onClick={() => handleExecuteProposal(p)} disabled={isLoading}>
+                                                    <Button variant="success" className="text-xs px-3 py-1.5 h-auto" disabled={isLoading}
+                                                        onClick={() => {
+                                                            if (window.confirm(`Exécuter ${p.type} ${p.quantity} × ${p.ticker} @ ${p.price} ${p.currency} ?`)) {
+                                                                handleExecuteProposal(p);
+                                                            }
+                                                        }}>
                                                         Exécuter
                                                     </Button>
                                                 )}
@@ -1973,9 +2023,28 @@ export default function App() {
                     {view === 'members' && (
                         <>
                             <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-bold text-lg dark:text-white">{members.length} membre{members.length > 1 ? 's' : ''}</h3>
+                                <h3 className="font-bold text-lg dark:text-white">{isLoadingData ? '...' : `${members.length} membre${members.length > 1 ? 's' : ''}`}</h3>
                                 {isAdmin && <Button onClick={() => setModal({ type: 'addMember' })}>+ Membre</Button>}
                             </div>
+                            {isLoadingData ? (
+                                <Card className="p-0 overflow-hidden">
+                                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                                        {[1,2,3].map(i => (
+                                            <div key={i} className="p-5 flex items-center gap-4">
+                                                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse shrink-0" />
+                                                <div className="space-y-2 flex-1">
+                                                    <div className="h-4 w-32 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+                                                    <div className="h-3 w-20 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
+                                                </div>
+                                                <div className="space-y-2 text-right">
+                                                    <div className="h-4 w-24 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+                                                    <div className="h-3 w-16 bg-slate-100 dark:bg-slate-800 rounded animate-pulse ml-auto" />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </Card>
+                            ) : (
                             <Card className="p-0 overflow-hidden bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
                                 {/* Mobile */}
                                 <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
@@ -2051,6 +2120,7 @@ export default function App() {
                                     </Table>
                                 </div>
                             </Card>
+                            )}
                         </>
                     )}
 
@@ -2066,55 +2136,74 @@ export default function App() {
                                     <Icon name="download" className="w-3.5 h-3.5" /> Export CSV
                                 </Button>
                             </div>
+                            {/* Filter bar */}
+                            <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 flex gap-2 overflow-x-auto">
+                                {(['ALL', 'DEPOSIT', 'WITHDRAWAL', 'BUY', 'SELL'] as const).map(f => (
+                                    <button key={f} onClick={() => setJournalFilter(f)}
+                                        className={`text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap transition-all ${journalFilter === f ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}>
+                                        {f === 'ALL' ? 'Tout' : f}
+                                    </button>
+                                ))}
+                            </div>
                             {transactions.length === 0 && (
                                 <div className="p-12 text-center text-slate-400 text-sm">Aucune opération enregistrée.</div>
                             )}
-                            {/* Mobile */}
-                            <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
-                                {transactions.map(t => {
-                                    const memberName = members.find(m => m.user_id === t.user_id)?.full_name;
-                                    const badgeType = t.type === 'DEPOSIT' || t.type === 'SELL' ? 'positive' : t.type === 'WITHDRAWAL' ? 'negative' : 'neutral';
-                                    return (
-                                        <div key={t.id} className="p-4 flex justify-between items-center">
-                                            <div>
-                                                <Badge type={badgeType}>{t.type}</Badge>
-                                                <div className="text-xs text-slate-500 mt-1">{new Date(t.created_at).toLocaleDateString('fr-FR')}</div>
-                                                {memberName && <div className="text-xs text-slate-400 mt-0.5">{memberName}</div>}
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="font-bold text-slate-900 dark:text-white font-mono">
-                                                    {t.asset_ticker && t.asset_ticker !== 'SNAPSHOT' ? t.asset_ticker : 'CASH'}
-                                                </div>
-                                                <div className="text-sm text-slate-500 font-mono">{t.amount_fiat?.toFixed(2)} {activeClub.currency}</div>
-                                            </div>
+                            {(() => {
+                                const filtered = journalFilter === 'ALL' ? transactions : transactions.filter(t => t.type === journalFilter);
+                                if (transactions.length > 0 && filtered.length === 0) {
+                                    return <div className="p-8 text-center text-slate-400 text-sm">Aucune opération de ce type.</div>;
+                                }
+                                return (
+                                    <>
+                                        {/* Mobile */}
+                                        <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
+                                            {filtered.map(t => {
+                                                const memberName = members.find(m => m.user_id === t.user_id)?.full_name;
+                                                const badgeType = t.type === 'DEPOSIT' || t.type === 'SELL' ? 'positive' : t.type === 'WITHDRAWAL' ? 'negative' : 'neutral';
+                                                return (
+                                                    <div key={t.id} className="p-4 flex justify-between items-center">
+                                                        <div>
+                                                            <Badge type={badgeType}>{t.type}</Badge>
+                                                            <div className="text-xs text-slate-500 mt-1">{new Date(t.created_at).toLocaleDateString('fr-FR')}</div>
+                                                            {memberName && <div className="text-xs text-slate-400 mt-0.5">{memberName}</div>}
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="font-bold text-slate-900 dark:text-white font-mono">
+                                                                {t.asset_ticker && t.asset_ticker !== 'SNAPSHOT' ? t.asset_ticker : 'CASH'}
+                                                            </div>
+                                                            <div className="text-sm text-slate-500 font-mono">{t.amount_fiat?.toFixed(2)} {activeClub.currency}</div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
-                                    );
-                                })}
-                            </div>
-                            {/* Desktop */}
-                            <div className="hidden md:block">
-                                <Table headers={['Date', 'Type', 'Membre', 'Actif', 'Montant', 'Détails']}>
-                                    {transactions.map(t => {
-                                        const memberName = members.find(m => m.user_id === t.user_id)?.full_name || '—';
-                                        const badgeType = t.type === 'DEPOSIT' || t.type === 'SELL' ? 'positive' : t.type === 'WITHDRAWAL' ? 'negative' : 'neutral';
-                                        return (
-                                            <TableRow key={t.id}>
-                                                <TableCell>{new Date(t.created_at).toLocaleDateString('fr-FR')}</TableCell>
-                                                <TableCell><Badge type={badgeType}>{t.type}</Badge></TableCell>
-                                                <TableCell>{memberName}</TableCell>
-                                                <TableCell className="font-mono">{t.asset_ticker && t.asset_ticker !== 'SNAPSHOT' ? t.asset_ticker : '—'}</TableCell>
-                                                <TableCell className="font-mono font-bold">{t.amount_fiat?.toFixed(2)} {activeClub.currency}</TableCell>
-                                                <TableCell className="text-slate-500 text-xs">
-                                                    {t.price_at_transaction && t.asset_ticker !== 'SNAPSHOT' ? `@ ${t.price_at_transaction.toFixed(2)}` : ''}
-                                                    {t.realized_gain != null && t.realized_gain !== 0 ? ` · P&L ${t.realized_gain >= 0 ? '+' : ''}${t.realized_gain.toFixed(2)}` : ''}
-                                                    {t.tax_estimate && t.tax_estimate > 0 ? ` · Impôt est. ${t.tax_estimate.toFixed(2)}` : ''}
-                                                    {t.shares_change && t.shares_change !== 0 ? ` · ${t.shares_change > 0 ? '+' : ''}${t.shares_change.toFixed(4)} parts` : ''}
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </Table>
-                            </div>
+                                        {/* Desktop */}
+                                        <div className="hidden md:block">
+                                            <Table headers={['Date', 'Type', 'Membre', 'Actif', 'Montant', 'Détails']}>
+                                                {filtered.map(t => {
+                                                    const memberName = members.find(m => m.user_id === t.user_id)?.full_name || '—';
+                                                    const badgeType = t.type === 'DEPOSIT' || t.type === 'SELL' ? 'positive' : t.type === 'WITHDRAWAL' ? 'negative' : 'neutral';
+                                                    return (
+                                                        <TableRow key={t.id}>
+                                                            <TableCell>{new Date(t.created_at).toLocaleDateString('fr-FR')}</TableCell>
+                                                            <TableCell><Badge type={badgeType}>{t.type}</Badge></TableCell>
+                                                            <TableCell>{memberName}</TableCell>
+                                                            <TableCell className="font-mono">{t.asset_ticker && t.asset_ticker !== 'SNAPSHOT' ? t.asset_ticker : '—'}</TableCell>
+                                                            <TableCell className="font-mono font-bold">{t.amount_fiat?.toFixed(2)} {activeClub.currency}</TableCell>
+                                                            <TableCell className="text-slate-500 text-xs">
+                                                                {t.price_at_transaction && t.asset_ticker !== 'SNAPSHOT' ? `@ ${t.price_at_transaction.toFixed(2)}` : ''}
+                                                                {t.realized_gain != null && t.realized_gain !== 0 ? ` · P&L ${t.realized_gain >= 0 ? '+' : ''}${t.realized_gain.toFixed(2)}` : ''}
+                                                                {t.tax_estimate && t.tax_estimate > 0 ? ` · Impôt est. ${t.tax_estimate.toFixed(2)}` : ''}
+                                                                {t.shares_change && t.shares_change !== 0 ? ` · ${t.shares_change > 0 ? '+' : ''}${t.shares_change.toFixed(4)} parts` : ''}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    );
+                                                })}
+                                            </Table>
+                                        </div>
+                                    </>
+                                );
+                            })()}
                         </Card>
                     )}
 
@@ -2390,82 +2479,110 @@ export default function App() {
                 <div className="space-y-4">
                     {tradeError && <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl">{tradeError}</div>}
 
-                    {tradeType === 'BUY' && (
-                        <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs text-slate-500">
-                            Cash disponible : <span className="font-mono font-bold text-slate-900 dark:text-white">{activeClub.cash_balance.toFixed(2)} {activeClub.currency}</span>
-                        </div>
-                    )}
+                    {/* Confirm step overlay */}
+                    {tradeConfirmStep ? (
+                        <>
+                            <div className={`p-4 rounded-2xl border ${tradeType === 'BUY' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'}`}>
+                                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Confirmer l'ordre ?</p>
+                                <div className="space-y-1 text-sm font-mono">
+                                    <div className="flex justify-between"><span className="text-slate-500">Type</span><span className="font-bold">{tradeType === 'BUY' ? 'ACHAT' : 'VENTE'}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">Actif</span><span className="font-bold">{tradeTicker}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">Quantité</span><span className="font-bold">{tradeQty}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-500">Prix unitaire</span><span className="font-bold">{parseFloat(tradePrice).toFixed(2)} {tradeCurrency}</span></div>
+                                    <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-1 mt-1"><span className="text-slate-500">Total</span>
+                                        <span className="font-bold">{(parseFloat(tradeQty) * parseFloat(tradePrice)).toFixed(2)} {tradeCurrency}
+                                            {tradeCurrency !== activeClub.currency && ` ≈ ${(parseFloat(tradeQty) * parseFloat(tradePrice) * convertCurrency(1, tradeCurrency, activeClub.currency)).toFixed(2)} ${activeClub.currency}`}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex gap-3">
+                                <Button variant="outline" className="flex-1" onClick={() => setTradeConfirmStep(false)}>Modifier</Button>
+                                <Button variant={tradeType === 'BUY' ? 'success' : 'danger'} className="flex-1" onClick={handleTrade} disabled={isLoading}>
+                                    {isLoading ? 'Exécution...' : `Confirmer`}
+                                </Button>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            {tradeType === 'BUY' && (
+                                <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs text-slate-500">
+                                    Cash disponible : <span className="font-mono font-bold text-slate-900 dark:text-white">{activeClub.cash_balance.toFixed(2)} {activeClub.currency}</span>
+                                </div>
+                            )}
 
-                    <div className="flex gap-2">
-                        <div className="flex-1 relative">
+                            <div className="flex gap-2">
+                                <div className="flex-1">
+                                    <Input
+                                        placeholder="Ticker (ex: NVDA)"
+                                        value={tradeTicker}
+                                        onChange={e => setTradeTicker(e.target.value.toUpperCase())}
+                                        className="uppercase"
+                                    />
+                                </div>
+                                <select
+                                    value={tradeCurrency}
+                                    onChange={e => setTradeCurrency(e.target.value as 'USD' | 'EUR')}
+                                    className="px-4 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border-none outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white font-bold text-sm"
+                                >
+                                    <option value="USD">USD</option>
+                                    <option value="EUR">EUR</option>
+                                </select>
+                            </div>
+
                             <Input
-                                placeholder="Ticker (ex: NVDA)"
-                                value={tradeTicker}
-                                onChange={e => setTradeTicker(e.target.value.toUpperCase())}
-                                className="uppercase"
+                                type="number"
+                                placeholder="Quantité"
+                                value={tradeQty}
+                                onChange={e => setTradeQty(e.target.value)}
+                                min="0"
+                                step="0.0001"
                             />
-                        </div>
-                        <select
-                            value={tradeCurrency}
-                            onChange={e => setTradeCurrency(e.target.value as 'USD' | 'EUR')}
-                            className="px-4 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border-none outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white font-bold text-sm"
-                        >
-                            <option value="USD">USD</option>
-                            <option value="EUR">EUR</option>
-                        </select>
-                    </div>
 
-                    <div className="relative">
-                        <Input
-                            type="number"
-                            placeholder="Quantité"
-                            value={tradeQty}
-                            onChange={e => setTradeQty(e.target.value)}
-                            min="0"
-                            step="0.0001"
-                        />
-                    </div>
+                            <div className="flex gap-2">
+                                <div className="flex-1 relative">
+                                    <Input
+                                        type="number"
+                                        placeholder="Prix unitaire"
+                                        value={isFetchingTradePrice ? '' : tradePrice}
+                                        onChange={e => setTradePrice(e.target.value)}
+                                        min="0"
+                                        step="0.01"
+                                    />
+                                    {isFetchingTradePrice && (
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400 animate-pulse">Chargement...</span>
+                                    )}
+                                </div>
+                                <Button variant="outline" className="shrink-0 px-3 text-xs h-auto" onClick={handleFetchTradePrice} disabled={!tradeTicker.trim() || isFetchingTradePrice}>
+                                    {isFetchingTradePrice ? '...' : 'Prix live'}
+                                </Button>
+                            </div>
 
-                    <div className="relative">
-                        <Input
-                            type="number"
-                            placeholder="Prix unitaire"
-                            value={isFetchingTradePrice ? '' : tradePrice}
-                            onChange={e => setTradePrice(e.target.value)}
-                            min="0"
-                            step="0.01"
-                        />
-                        {isFetchingTradePrice && (
-                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400 animate-pulse">Récupération...</span>
-                        )}
-                        {!isFetchingTradePrice && tradePrice && (
-                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">{tradeCurrency}</span>
-                        )}
-                    </div>
+                            {tradeQty && tradePrice && parseFloat(tradeQty) > 0 && parseFloat(tradePrice) > 0 && (
+                                <div className="text-xs text-slate-500 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
+                                    Total : <span className="font-mono font-bold text-slate-900 dark:text-white">
+                                        {(parseFloat(tradeQty) * parseFloat(tradePrice)).toFixed(2)} {tradeCurrency}
+                                        {tradeCurrency !== activeClub.currency && ` ≈ ${(parseFloat(tradeQty) * parseFloat(tradePrice) * convertCurrency(1, tradeCurrency, activeClub.currency)).toFixed(2)} ${activeClub.currency}`}
+                                    </span>
+                                </div>
+                            )}
 
-                    {tradeQty && tradePrice && parseFloat(tradeQty) > 0 && parseFloat(tradePrice) > 0 && (
-                        <div className="text-xs text-slate-500 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
-                            Total : <span className="font-mono font-bold text-slate-900 dark:text-white">
-                                {(parseFloat(tradeQty) * parseFloat(tradePrice)).toFixed(2)} {tradeCurrency}
-                                {tradeCurrency !== activeClub.currency && ` ≈ ${(parseFloat(tradeQty) * parseFloat(tradePrice) * convertCurrency(1, tradeCurrency, activeClub.currency)).toFixed(2)} ${activeClub.currency}`}
-                            </span>
-                        </div>
+                            {tradeType === 'SELL' && tradeTicker && (() => {
+                                const asset = assets.find(a => a.ticker === tradeTicker);
+                                if (!asset) return <p className="text-xs text-slate-400">Actif non trouvé en portefeuille.</p>;
+                                return <p className="text-xs text-slate-500">Détenu : <span className="font-mono font-bold">{asset.quantity.toFixed(4)}</span> unités · PRU {asset.avg_buy_price.toFixed(2)}</p>;
+                            })()}
+
+                            <Button
+                                variant={tradeType === 'BUY' ? 'success' : 'danger'}
+                                className="w-full h-12"
+                                onClick={handleTrade}
+                                disabled={isLoading}
+                            >
+                                {tradeType === 'BUY' ? 'Acheter →' : 'Vendre →'}
+                            </Button>
+                        </>
                     )}
-
-                    {tradeType === 'SELL' && tradeTicker && (() => {
-                        const asset = assets.find(a => a.ticker === tradeTicker);
-                        if (!asset) return <p className="text-xs text-slate-400">Actif non trouvé en portefeuille.</p>;
-                        return <p className="text-xs text-slate-500">Détenu : <span className="font-mono font-bold">{asset.quantity.toFixed(4)}</span> unités · PRU {asset.avg_buy_price.toFixed(2)}</p>;
-                    })()}
-
-                    <Button
-                        variant={tradeType === 'BUY' ? 'success' : 'danger'}
-                        className="w-full h-12"
-                        onClick={handleTrade}
-                        disabled={isLoading}
-                    >
-                        {isLoading ? 'Exécution...' : `Confirmer ${tradeType === 'BUY' ? 'l\'achat' : 'la vente'}`}
-                    </Button>
                 </div>
             </Modal>
 

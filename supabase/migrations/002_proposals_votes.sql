@@ -49,6 +49,17 @@ drop policy if exists "Admins update proposals" on proposals;
 create policy "Admins update proposals" on proposals
   for update using ( is_club_admin(club_id) );
 
+-- Members can update vote counts on pending proposals (needed after casting a vote)
+drop policy if exists "Members update vote counts" on proposals;
+create policy "Members update vote counts" on proposals
+  for update using (
+    is_club_member(club_id)
+    and status in ('pending', 'approved', 'rejected')
+  )
+  with check (
+    is_club_member(club_id)
+  );
+
 -- Policies votes
 drop policy if exists "Members cast votes" on votes;
 create policy "Members cast votes" on votes
