@@ -762,13 +762,13 @@ export default function App() {
         try {
             const { data, error } = await supabase
                 .from('messages')
-                .select('*')
+                .select('id, club_id, user_id, content, type, created_at')
                 .eq('club_id', clubId)
                 .order('created_at', { ascending: true })
                 .limit(100);
-            if (!error) setMessages(data || []);
+            if (!error && data) setMessages(data as Message[]);
         } catch {
-            // Table may not exist yet — silently ignore
+            // Silently ignore (abort on unmount, table missing, etc.)
         }
     };
 
@@ -2845,7 +2845,7 @@ export default function App() {
                             <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
                                 <div>
                                     <h3 className="font-bold text-slate-900 dark:text-white">Chat du club</h3>
-                                    <p className="text-xs text-slate-400 mt-0.5">{members.length} membre{members.length > 1 ? 's' : ''} · temps réel</p>
+                                    <p className="text-xs text-slate-400 mt-0.5">{members.length > 0 ? `${members.length} membre${members.length > 1 ? 's' : ''}` : activeClub?.name ?? ''} · temps réel</p>
                                 </div>
                                 {isAdmin && (
                                     <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-full font-semibold">
