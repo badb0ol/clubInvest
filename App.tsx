@@ -1136,7 +1136,6 @@ export default function App() {
         const { error } = await supabase.from('messages').insert({
             club_id: activeClub.id,
             user_id: session.user.id,
-            user_name: currentUserMember?.full_name || null,
             content: chatInput.trim(),
             type,
         });
