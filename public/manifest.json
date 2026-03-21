@@ -1,20 +1,29 @@
 {
   "short_name": "ClubInvest",
-  "name": "Venot's Fund",
+  "name": "ClubInvest",
+  "description": "Gérez votre club d'investissement",
   "icons": [
     {
-      "src": "https://via.placeholder.com/192.png?text=Icon",
+      "src": "/apple-touch-icon.png",
+      "type": "image/png",
+      "sizes": "180x180"
+    },
+    {
+      "src": "/pwa-192x192.png",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "https://via.placeholder.com/512.png?text=Icon",
+      "src": "/pwa-512x512.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any maskable"
     }
   ],
-  "start_url": ".",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "theme_color": "#000000",
   "background_color": "#000000"
 }

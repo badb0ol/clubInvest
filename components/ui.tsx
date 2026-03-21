@@ -6,11 +6,11 @@ import React from 'react';
 export const Logo: React.FC<{ className?: string, onClick?: () => void }> = ({ className = '', onClick }) => (
   <div onClick={onClick} className={`flex items-center gap-2 cursor-pointer group ${className}`}>
     <div className="w-8 h-8 bg-zinc-900 dark:bg-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M3 21H21" className="stroke-white dark:stroke-zinc-900" strokeWidth="2" strokeLinecap="round"/>
-        <path d="M3 16L9 10L13 14L21 6" className="stroke-white dark:stroke-zinc-900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M21 6V10" className="stroke-white dark:stroke-zinc-900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M21 6H17" className="stroke-white dark:stroke-zinc-900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ stroke: 'currentColor' }} className="text-white dark:text-zinc-900">
+        <path d="M3 21H21" strokeWidth="2" strokeLinecap="round"/>
+        <path d="M3 16L9 10L13 14L21 6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M21 6V10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M21 6H17" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     </div>
     <span className="font-bold text-xl tracking-tight text-zinc-900 dark:text-white">ClubInvest</span>
