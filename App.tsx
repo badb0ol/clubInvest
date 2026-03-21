@@ -975,6 +975,7 @@ export default function App() {
         const { error } = await supabase.from('messages').insert({
             club_id: activeClub.id,
             user_id: session.user.id,
+            user_name: currentUserMember?.full_name || null,
             content: chatInput.trim(),
             type,
         });
@@ -1435,11 +1436,9 @@ export default function App() {
     const menuItems = [
         { id: 'dashboard', label: 'Tableau de Bord', shortLabel: 'Accueil', icon: 'dashboard' },
         { id: 'portfolio', label: 'Portefeuille', shortLabel: 'Actifs', icon: 'pie' },
-        { id: 'members', label: 'Membres', shortLabel: 'Membres', icon: 'users' },
         { id: 'journal', label: 'Journal', shortLabel: 'Journal', icon: 'book' },
         { id: 'chat', label: 'Chat', shortLabel: 'Chat', icon: 'chat' },
         { id: 'votes', label: 'Votes', shortLabel: 'Votes', icon: 'vote' },
-        { id: 'guide', label: 'Guide & Fiscalité', shortLabel: 'Guide', icon: 'guide' },
     ];
 
     return (
@@ -1501,6 +1500,15 @@ export default function App() {
                                 {item.label}
                             </button>
                         ))}
+                        {/* Members + Guide in sidebar only */}
+                        <button onClick={() => setView('members')} className={`w-full text-left px-4 py-3 text-sm font-semibold transition-all flex items-center gap-4 rounded-xl ${view === 'members' ? 'bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-900/50'}`}>
+                            <Icon name="users" className="w-5 h-5" />
+                            Membres
+                        </button>
+                        <button onClick={() => setView('guide')} className={`w-full text-left px-4 py-3 text-sm font-semibold transition-all flex items-center gap-4 rounded-xl ${view === 'guide' ? 'bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-900/50'}`}>
+                            <Icon name="guide" className="w-5 h-5" />
+                            Guide & Fiscalité
+                        </button>
                         {isAdmin && (
                             <button onClick={() => setView('admin')} className={`w-full text-left px-4 py-3 text-sm font-semibold transition-all flex items-center gap-4 rounded-xl mt-6 ${view === 'admin' ? 'bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-900/50'}`}>
                                 <Icon name="settings" className="w-5 h-5" />
@@ -1533,8 +1541,14 @@ export default function App() {
             {/* MOBILE TOP HEADER */}
             <header className="md:hidden fixed top-0 w-full z-40 bg-white/80 dark:bg-black/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 p-4 flex justify-between items-center">
                 <Logo className="w-auto h-8" onClick={() => setView('dashboard')} />
-                <div className="flex items-center gap-2">
-                    <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                <div className="flex items-center gap-1">
+                    <button onClick={() => setView('members')} className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${view === 'members' ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`} title="Membres">
+                        <Icon name="users" className="w-5 h-5" />
+                    </button>
+                    <button onClick={() => setView('guide')} className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${view === 'guide' ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`} title="Guide">
+                        <Icon name="guide" className="w-5 h-5" />
+                    </button>
+                    <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-400">
                         <Icon name={darkMode ? 'sun' : 'moon'} className="w-5 h-5" />
                     </button>
                     <button onClick={() => supabase.auth.signOut()} className="p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-red-500">
@@ -2276,7 +2290,7 @@ export default function App() {
                                 )}
                                 {messages.filter(m => m.type === 'message').map(msg => {
                                     const isMe = msg.user_id === session?.user.id;
-                                    const authorName = members.find(mb => mb.user_id === msg.user_id)?.full_name || 'Membre';
+                                    const authorName = msg.user_name || members.find(mb => mb.user_id === msg.user_id)?.full_name || 'Membre';
                                     const initials = authorName.charAt(0).toUpperCase();
                                     return (
                                         <div key={msg.id} className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
