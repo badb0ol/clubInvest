@@ -40,54 +40,91 @@ const GUIDE_SECTIONS = [
             'Au démarrage, la NAV est fixée à 100 €. Si vous déposez 1 000 € quand la NAV est à 120 €, vous recevez 8,33 parts.',
             'Votre valeur dans le club = parts détenues × NAV du jour.',
             'C\'est juste et équitable : chacun entre et sort au prix réel du marché, sans diluer les autres.',
-            'Figez la NAV au moins une fois par mois depuis l\'onglet Admin pour garder un historique propre.',
+            'Figez la NAV au moins une fois par mois (onglet Admin) pour garder un historique propre.',
         ]
     },
     {
         emoji: '🏛️',
-        title: 'Cadre légal en France',
+        title: 'Cadre légal — structure et membres',
         content: [
-            'Un club d\'investissement est une structure informelle de copropriété (indivision) entre ses membres.',
-            'Le nombre maximum de membres est généralement fixé à 20 — vérifiez les textes en vigueur pour votre situation.',
-            'Un gérant (admin) est désigné pour passer les ordres, tenir la comptabilité et animer les réunions.',
-            'Le club ne peut ni emprunter ni contracter de dettes.',
-            'Les investissements doivent porter sur des valeurs mobilières cotées (actions, ETF, obligations).',
-            'Il est fortement recommandé de rédiger une convention entre membres précisant les règles de fonctionnement, d\'entrée et de sortie.',
+            'Un club d\'investissement fonctionne en indivision : pas de personnalité morale, aucune immatriculation requise.',
+            'Entre 5 et 20 membres maximum — tous doivent être des personnes physiques (pas de sociétés). Si le club tombe sous 5 membres, il doit être dissous.',
+            'Tous les membres doivent approuver à l\'unanimité l\'admission de tout nouveau membre.',
+            'Chaque membre ne peut appartenir qu\'à un seul club d\'investissement bénéficiant du régime fiscal favorable.',
+            'Le club ne peut ni emprunter ni contracter de dettes. Il est interdit d\'utiliser le levier.',
+            'La rédaction d\'une convention (statuts) entre membres est fortement recommandée : elle précise les règles d\'entrée, de sortie, de vote, et la gestion en cas de décès.',
+            'Investissements autorisés : actions cotées, obligations, ETF/OPCVM, warrants (dans la limite de 10 % du volume annuel de transactions). Crypto et forex sont exclus du régime.',
+        ]
+    },
+    {
+        emoji: '🔑',
+        title: 'L\'avantage fiscal clé : le report d\'imposition',
+        content: [
+            'C\'est le principal avantage d\'un club : les plus-values réalisées par le club sur la vente de titres ne sont PAS imposées tant qu\'un membre ne sort pas ses fonds.',
+            'Concrètement : le club peut acheter, vendre, réinvestir les gains en interne année après année — aucun impôt n\'est dû pendant ce temps.',
+            'L\'imposition intervient uniquement au moment du retrait d\'un membre ou de la dissolution du club.',
+            'À la dissolution, les membres peuvent choisir de recevoir les titres en nature (non en cash). Dans ce cas, aucune imposition n\'est déclenchée à ce moment — elle est reportée jusqu\'à la vente personnelle des titres.',
+            'Comparaison : sur un CTO individuel, chaque vente de titre est un fait générateur d\'impôt immédiat. Le club élimine cette friction et permet un effet "boule de neige" sur les gains réinvestis.',
+            'Attention : ce report ne s\'applique PAS aux dividendes et intérêts — ceux-ci sont déclarés annuellement par chaque membre au prorata de sa quote-part.',
         ]
     },
     {
         emoji: '📋',
-        title: 'Fiscalité — ce que vous devez déclarer',
+        title: 'Fiscalité à la sortie — ce que vous payez',
         content: [
-            'Le club est fiscalement transparent : il n\'est pas imposable en lui-même. Chaque membre déclare sa quote-part à titre personnel.',
-            'Plus-values et dividendes : soumis au PFU (Prélèvement Forfaitaire Unique) de 31,4 % = 12,8 % d\'IR + 18,2 % de prélèvements sociaux (taux en vigueur depuis la LFI 2025).',
-            'Option possible pour le barème progressif de l\'IR — à envisager si votre tranche marginale est inférieure à 12,8 %.',
-            'Chaque année, le gérant du club établit un IFU (Imprimé Fiscal Unique) / formulaire 2561 que chaque membre utilise pour sa déclaration personnelle.',
-            'ClubInvest calcule une provision fiscale automatique à chaque vente (31,4 % sur la plus-value réalisée) pour que vous ne soyez pas surpris.',
-            '⚠️ Les règles fiscales évoluent. Consultez un conseiller fiscal ou l\'administration fiscale (impots.gouv.fr) pour votre situation.',
+            'Lors d\'un retrait, la plus-value (différence entre valeur de sortie et coût d\'entrée) est soumise au PFU de 31,4 %.',
+            'PFU 2026 : 12,8 % d\'impôt sur le revenu + 18,6 % de prélèvements sociaux (dont CSG 10,6 % après la hausse de +1,4 pt de la LFSS 2026).',
+            'Option possible : barème progressif de l\'IR à la place des 12,8 % — pertinent si votre tranche marginale est inférieure à 12,8 %.',
+            'Dividendes et intérêts : déclarés chaque année, également soumis au PFU de 31,4 % (ou barème progressif sur option).',
+            'Le courtier émet un IFU (formulaire 2561) avant le 16 février de l\'année suivante. C\'est lui — pas le club — qui déclare à l\'administration fiscale.',
+            'Chaque membre utilise les chiffres de son IFU pour remplir sa déclaration personnelle (lignes 2DC, 2TR du formulaire 2042).',
+            '⚠️ Les taux évoluent avec chaque loi de finances. Vérifiez toujours les taux actuels sur impots.gouv.fr.',
+        ]
+    },
+    {
+        emoji: '💰',
+        title: 'Plafond de versement et optimisation',
+        content: [
+            'Chaque foyer fiscal ne peut verser que 5 500 € par an dans un club d\'investissement (source : BOFIP BOI-RPPM-RCM-40-20).',
+            'Ce plafond s\'applique au foyer entier : un couple partage les 5 500 €, qu\'ils soient dans le même club ou dans des clubs différents.',
+            'Les dividendes réinvestis par le club comptent également dans ce plafond annuel.',
+            'Le plafond s\'applique aux versements entrants, pas à la valeur des parts — vos parts peuvent valoir bien plus que 5 500 € si elles ont bien performé.',
+            'Comparaison PEA : le PEA permet 150 000 € de versements avec une exonération d\'IR après 5 ans, ce qui est fiscalement plus avantageux pour les détenteurs long terme. Le club compense par la dimension collective et le report d\'imposition sur les plus-values intermédiaires.',
+        ]
+    },
+    {
+        emoji: '⚰️',
+        title: 'Décès d\'un membre',
+        content: [
+            'Le club ne se poursuit pas avec les héritiers du membre décédé : les héritiers ne deviennent pas automatiquement membres.',
+            'La part du défunt est liquidée au prix de marché, avec une déduction d\'environ 2 % pour couvrir les frais de transaction.',
+            'La valeur nette est versée aux héritiers (ou au notaire en charge de la succession) — ils reçoivent du cash, pas des titres.',
+            'Si le décès fait tomber le nombre de membres sous 5, le club doit être dissous.',
+            'Pour éviter les situations difficiles, il est vivement recommandé que les statuts prévoient explicitement la procédure de liquidation en cas de décès.',
         ]
     },
     {
         emoji: '💡',
         title: 'Pourquoi investir en club plutôt que seul ?',
         content: [
-            'Ticket d\'entrée réduit : en mettant en commun vos épargnes, vous accédez à des actions ou ETF qui seraient hors de portée individuellement.',
-            'Mutualisation des frais : un seul ordre = un seul frais de courtage, divisé entre tous les membres.',
-            'Diversification accrue : avec plus de capital, vous pouvez répartir sur plus de lignes.',
-            'Apprentissage collectif : chacun apporte son analyse, ses idées, et son domaine d\'expertise.',
-            'Discipline de groupe : les décisions collégiales évitent les coups de tête émotionnels.',
-            'Cadre structuré : la tenue d\'une comptabilité (NAV, journal des opérations) force une rigueur bénéfique à tous.',
+            'Report d\'imposition : les gains restent investis sans frottement fiscal tant que personne ne sort — c\'est l\'avantage principal.',
+            'Ticket d\'entrée réduit : en mettant en commun les épargnes, vous accédez à des actions ou ETF autrement hors de portée individuellement.',
+            'Mutualisation des frais : un seul ordre de bourse = un seul frais, divisé entre tous les membres.',
+            'Diversification accrue : avec plus de capital, vous répartissez sur davantage de lignes, réduisant le risque idiosyncratique.',
+            'Apprentissage collectif : chacun apporte son analyse, ses idées, son domaine d\'expertise — la qualité des décisions s\'améliore.',
+            'Discipline de groupe : les décisions collégiales évitent les réactions émotionnelles et forcent à argumenter chaque choix.',
         ]
     },
     {
         emoji: '🏦',
-        title: 'Bourse Direct — le courtier pour les clubs',
+        title: 'Choisir son courtier',
         content: [
-            'Bourse Direct est l\'un des rares courtiers français à proposer des comptes-titres ouverts au nom d\'un club d\'investissement (compte collectif indivis).',
-            'Frais de courtage parmi les plus compétitifs du marché — consultez le barème à jour directement sur boursedirect.fr.',
-            'Accès aux marchés Euronext (Paris, Amsterdam, Bruxelles), ETF, et marchés américains (NYSE, NASDAQ).',
-            'Astuce : centralisez les virements des membres sur un compte courant commun, puis faites un unique virement vers Bourse Direct.',
-            'D\'autres courtiers proposent des comptes clubs : Fortuneo, Saxo, Interactive Brokers. Comparez les frais selon votre volume d\'activité.',
+            'Peu de courtiers acceptent les comptes collectifs pour clubs d\'investissement. Vérifiez toujours leur politique avant d\'ouvrir.',
+            'Parmi les courtiers bancaires traditionnels : Société Générale, CIC et BNP Paribas acceptent historiquement les comptes clubs.',
+            'Parmi les courtiers en ligne : certains acceptent les clubs — renseignez-vous directement, les politiques changent régulièrement.',
+            'Critères de choix : frais de courtage par ordre, frais de tenue de compte, accès aux marchés internationaux, qualité de l\'IFU fourni.',
+            'Centralisez les virements des membres sur un compte courant commun (ex. Société Générale pro ou N26 Business), puis faites un seul virement vers le courtier pour minimiser les frais.',
+            '⚠️ Toujours vérifier qu\'un courtier accepte encore les nouveaux clubs avant d\'engager les démarches — les politiques évoluent.',
         ]
     },
     {
@@ -95,11 +132,11 @@ const GUIDE_SECTIONS = [
         title: 'Règles de bonne gestion recommandées',
         content: [
             'Figer la NAV une fois par mois (onglet Admin) pour maintenir un historique de performance fiable.',
-            'Garder minimum 10–20 % de trésorerie pour saisir les opportunités sans vendre en urgence.',
+            'Garder minimum 10–20 % de trésorerie pour saisir les opportunités et faire face aux demandes de retrait sans vendre en urgence.',
             'Voter collectivement avant chaque achat/vente — ClubInvest enregistre l\'historique dans le Journal.',
-            'Définir ensemble un horizon d\'investissement (long terme, 5+ ans recommandé pour les actions).',
-            'Éviter les titres non cotés, les cryptomonnaies et les produits dérivés (hors cadre légal des clubs).',
-            'Organisez une réunion annuelle pour approuver les comptes, élire le gérant et décider des orientations.',
+            'Définir ensemble un horizon d\'investissement clair (long terme, 5+ ans recommandé pour les actions).',
+            'Organiser une réunion annuelle pour approuver les comptes, élire le gérant et décider des orientations.',
+            'Tenir des statuts à jour : règles d\'entrée/sortie, préavis de retrait, procédure en cas de décès ou de mésentente.',
         ]
     },
 ];

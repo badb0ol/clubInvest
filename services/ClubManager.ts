@@ -209,7 +209,7 @@ export const executeSellOrder = (
     // Realized Gain (Plus-value)
     const realizedGain = revenueClubCurrency - costBasisEur;
 
-    // 3. Calculate Tax Liability — PFU 31.4% (12.8% IR + 18.2% PS après hausse CSG, LFI 2025)
+    // 3. Calculate Tax Liability — PFU 31.4% (12.8% IR + 18.6% PS après hausse CSG +1.4pt, LFSS 2026)
     let taxAmount = 0;
     if (realizedGain > 0) {
         taxAmount = realizedGain * 0.314;
