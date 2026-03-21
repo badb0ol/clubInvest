@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, ResponsiveContainer, YAxis, Tooltip, XAxis, CartesianGrid } from 'recharts';
-import { Club, Member, Asset, Transaction, NavEntry, PortfolioSummary, Message } from './types';
-import { fetchAssetPrice, convertCurrency } from './services/financeEngine';
+import { Club, Member, Asset, Transaction, NavEntry, PortfolioSummary, Message, Proposal, PriceAlert, DividendEntry } from './types';
+import { fetchAssetPrice, convertCurrency, fetchBenchmarkHistory, fetchDividendHistory } from './services/financeEngine';
 import { generateInviteCode, calculatePortfolioState, executeBuyOrder, executeSellOrder, executeWithdrawal, createNavSnapshot } from './services/ClubManager';
 import { analyzePortfolioDistribution } from './services/geminiService';
 import { Card, Button, Input, Badge, Modal, Table, TableRow, TableCell, Logo, Icon } from './components/ui';
@@ -18,7 +18,7 @@ const AVAILABLE_BANKS = [
 ];
 
 type TimeRange = '1J' | '1S' | '1M' | '1A' | 'MAX';
-type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' | 'members' | 'journal' | 'chat' | 'guide' | 'admin';
+type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' | 'members' | 'journal' | 'chat' | 'guide' | 'votes' | 'admin';
 type ModalType = 'addMember' | 'deposit' | 'trade' | 'connectBank' | 'withdraw' | 'kickConfirm' | 'resetClub' | null;
 
 // --- INLINE NOTIFICATION ---
@@ -442,6 +442,26 @@ export default function App() {
     const [resetError, setResetError] = useState<string | null>(null);
     const [isResetting, setIsResetting] = useState(false);
 
+    // Votes / Proposals state
+    const [proposals, setProposals] = useState<Proposal[]>([]);
+    const [myVotes, setMyVotes] = useState<Record<string, 'for' | 'against'>>({});
+    const [showProposalForm, setShowProposalForm] = useState(false);
+    const [proposalForm, setProposalForm] = useState({ type: 'BUY' as 'BUY' | 'SELL', ticker: '', quantity: '', price: '', thesis: '' });
+    const [isSubmittingProposal, setIsSubmittingProposal] = useState(false);
+    const [proposalError, setProposalError] = useState<string | null>(null);
+
+    // Benchmark
+    const [benchmarkData, setBenchmarkData] = useState<{ date: string; value: number }[]>([]);
+    const [benchmarkSymbol, setBenchmarkSymbol] = useState<'SPY' | '^FCHI' | null>(null);
+    const [isFetchingBenchmark, setIsFetchingBenchmark] = useState(false);
+
+    // Price alerts (localStorage)
+    const [priceAlerts, setPriceAlerts] = useState<PriceAlert[]>([]);
+    const [alertForm, setAlertForm] = useState({ ticker: '', price: '', direction: 'above' as 'above' | 'below', note: '' });
+
+    // Dividends
+    const [dividends, setDividends] = useState<DividendEntry[]>([]);
+
     // Chat state
     const [messages, setMessages] = useState<Message[]>([]);
     const [chatInput, setChatInput] = useState('');
@@ -649,6 +669,42 @@ export default function App() {
             return acc;
         }, {} as Record<string, number>);
     }, [members, portfolioSummary.navPerShare]);
+
+    // High water mark + drawdown
+    const highWaterMark = useMemo(() => {
+        const allNavs = [100, ...navHistory.map(n => n.nav_per_share), portfolioSummary.navPerShare];
+        return Math.max(...allNavs);
+    }, [navHistory, portfolioSummary.navPerShare]);
+
+    const drawdown = portfolioSummary.navPerShare < highWaterMark
+        ? parseFloat(((portfolioSummary.navPerShare - highWaterMark) / highWaterMark * 100).toFixed(2))
+        : 0;
+
+    // Last deposit date per member (for contribution reminder badges)
+    const memberLastDeposit = useMemo(() => {
+        return members.reduce((acc, m) => {
+            const last = transactions
+                .filter(t => t.type === 'DEPOSIT' && t.user_id === m.user_id)
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+            acc[m.id] = last?.created_at || null;
+            return acc;
+        }, {} as Record<string, string | null>);
+    }, [members, transactions]);
+
+    // Benchmark % return aligned to first nav snapshot
+    const benchmarkComparison = useMemo(() => {
+        if (!benchmarkData.length || navHistory.length < 1) return null;
+        const sorted = [...navHistory].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const firstNav = sorted[0];
+        const firstDate = new Date(firstNav.date).getTime();
+        const basePoint = benchmarkData.reduce((prev, curr) =>
+            Math.abs(new Date(curr.date).getTime() - firstDate) < Math.abs(new Date(prev.date).getTime() - firstDate) ? curr : prev
+        );
+        const latest = benchmarkData[benchmarkData.length - 1];
+        const benchReturn = parseFloat(((latest.value - basePoint.value) / basePoint.value * 100).toFixed(2));
+        const clubReturn = parseFloat(((portfolioSummary.navPerShare - firstNav.nav_per_share) / firstNav.nav_per_share * 100).toFixed(2));
+        return { clubReturn, benchReturn, symbol: benchmarkSymbol };
+    }, [benchmarkData, navHistory, portfolioSummary.navPerShare, benchmarkSymbol]);
 
     // --- HANDLERS ---
 
@@ -989,10 +1045,186 @@ export default function App() {
         }, 1200);
     };
 
+    // --- PROPOSALS & VOTES ---
+    const handleSubmitProposal = async () => {
+        if (!activeClub || !session || !currentUserMember) return;
+        setIsSubmittingProposal(true);
+        setProposalError(null);
+        try {
+            const qty = parseFloat(proposalForm.quantity);
+            const price = parseFloat(proposalForm.price);
+            if (!proposalForm.ticker.trim()) throw new Error('Ticker obligatoire.');
+            if (isNaN(qty) || qty <= 0) throw new Error('Quantité invalide.');
+            if (isNaN(price) || price <= 0) throw new Error('Prix invalide.');
+            if (!proposalForm.thesis.trim()) throw new Error('La thèse est obligatoire.');
+            const { data, error } = await supabase.from('proposals').insert({
+                club_id: activeClub.id,
+                proposer_id: session.user.id,
+                proposer_name: currentUserMember.full_name,
+                type: proposalForm.type,
+                ticker: proposalForm.ticker.trim().toUpperCase(),
+                quantity: qty,
+                price,
+                currency: activeClub.currency,
+                thesis: proposalForm.thesis.trim(),
+                status: 'pending',
+                votes_for: 0,
+                votes_against: 0,
+                expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+            }).select().single();
+            if (error) throw error;
+            setProposals(prev => [data as Proposal, ...prev]);
+            setProposalForm({ type: 'BUY', ticker: '', quantity: '', price: '', thesis: '' });
+            setShowProposalForm(false);
+            notify('Proposition soumise au vote.');
+        } catch (e: any) {
+            setProposalError(e.message);
+        } finally {
+            setIsSubmittingProposal(false);
+        }
+    };
+
+    const handleVote = async (proposalId: string, vote: 'for' | 'against') => {
+        if (!session) return;
+        try {
+            const { error } = await supabase.from('votes').insert({ proposal_id: proposalId, user_id: session.user.id, vote });
+            if (error) throw error;
+            // Update local vote count
+            const newProposals = proposals.map(p => {
+                if (p.id !== proposalId) return p;
+                const updated = {
+                    ...p,
+                    votes_for: p.votes_for + (vote === 'for' ? 1 : 0),
+                    votes_against: p.votes_against + (vote === 'against' ? 1 : 0)
+                };
+                // Auto-approve if majority reached
+                const majority = Math.floor(members.length / 2) + 1;
+                const newStatus = updated.votes_for >= majority ? 'approved' : updated.votes_against >= majority ? 'rejected' : 'pending';
+                if (newStatus !== 'pending') {
+                    supabase.from('proposals').update({ votes_for: updated.votes_for, votes_against: updated.votes_against, status: newStatus }).eq('id', proposalId).then(() => {});
+                } else {
+                    supabase.from('proposals').update({ votes_for: updated.votes_for, votes_against: updated.votes_against }).eq('id', proposalId).then(() => {});
+                }
+                return { ...updated, status: newStatus as Proposal['status'] };
+            });
+            setProposals(newProposals);
+            setMyVotes(prev => ({ ...prev, [proposalId]: vote }));
+        } catch (e: any) {
+            notify(e.message || 'Erreur lors du vote.');
+        }
+    };
+
+    const handleExecuteProposal = async (proposal: Proposal) => {
+        if (!activeClub || !currentUserMember) return;
+        setIsLoading(true);
+        try {
+            if (proposal.type === 'BUY') {
+                const { updatedClub, updatedAssets, transaction } = executeBuyOrder(activeClub, assets, proposal.ticker, proposal.quantity, proposal.price, proposal.currency, currentUserMember);
+                await supabase.from('clubs').update({ cash_balance: updatedClub.cash_balance }).eq('id', activeClub.id);
+                const existingAsset = assets.find(a => a.ticker === proposal.ticker);
+                const updatedAsset = updatedAssets.find(a => a.ticker === proposal.ticker)!;
+                if (existingAsset) {
+                    await supabase.from('assets').update({ quantity: updatedAsset.quantity, avg_buy_price: updatedAsset.avg_buy_price }).eq('id', existingAsset.id);
+                } else {
+                    await supabase.from('assets').insert({ club_id: activeClub.id, ticker: updatedAsset.ticker, quantity: updatedAsset.quantity, avg_buy_price: updatedAsset.avg_buy_price, currency: updatedAsset.currency });
+                }
+                await supabase.from('transactions').insert({ ...transaction, user_name: currentUserMember.full_name });
+            } else {
+                const { updatedClub, updatedAssets, transaction } = executeSellOrder(activeClub, assets, proposal.ticker, proposal.quantity, proposal.price, proposal.currency, currentUserMember);
+                await supabase.from('clubs').update({ cash_balance: updatedClub.cash_balance, tax_liability: updatedClub.tax_liability }).eq('id', activeClub.id);
+                const soldAsset = assets.find(a => a.ticker === proposal.ticker)!;
+                const remaining = updatedAssets.find(a => a.ticker === proposal.ticker);
+                if (remaining) {
+                    await supabase.from('assets').update({ quantity: remaining.quantity }).eq('id', soldAsset.id);
+                } else {
+                    await supabase.from('assets').delete().eq('id', soldAsset.id);
+                }
+                await supabase.from('transactions').insert({ ...transaction, user_name: currentUserMember.full_name });
+            }
+            await supabase.from('proposals').update({ status: 'executed' }).eq('id', proposal.id);
+            setProposals(prev => prev.map(p => p.id === proposal.id ? { ...p, status: 'executed' } : p));
+            await loadClubData(activeClub.id);
+            notify(`${proposal.type === 'BUY' ? 'Achat' : 'Vente'} de ${proposal.ticker} exécuté !`);
+        } catch (e: any) {
+            notify(e.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // --- EXPORT CSV ---
+    const handleExportCSV = () => {
+        if (!activeClub) return;
+        // Transactions sheet
+        const txHeaders = ['Date', 'Type', 'Membre', 'Montant', 'Actif', 'Prix unitaire', 'Plus-value', 'Parts'];
+        const txRows = transactions.map(t => [
+            new Date(t.created_at).toLocaleDateString('fr-FR'),
+            t.type,
+            t.user_name || t.user_id || '',
+            t.amount_fiat.toFixed(2),
+            t.asset_ticker || '',
+            t.price_at_transaction?.toFixed(2) || '',
+            t.realized_gain?.toFixed(2) || '',
+            t.shares_change?.toFixed(4) || ''
+        ]);
+        const txCSV = [txHeaders, ...txRows].map(r => r.map(v => `"${v}"`).join(';')).join('\n');
+
+        // Member summary sheet
+        const memHeaders = ['Membre', 'Rôle', 'Parts', 'Capital investi', 'Valeur actuelle', 'P&L', 'Dernière cotisation'];
+        const memRows = members.map(m => {
+            const val = memberValues[m.id] || 0;
+            const last = memberLastDeposit[m.id];
+            return [
+                m.full_name || '',
+                m.role,
+                m.shares_owned.toFixed(4),
+                m.total_invested_fiat.toFixed(2),
+                val.toFixed(2),
+                (val - m.total_invested_fiat).toFixed(2),
+                last ? new Date(last).toLocaleDateString('fr-FR') : 'Jamais'
+            ];
+        });
+        const memCSV = [memHeaders, ...memRows].map(r => r.map(v => `"${v}"`).join(';')).join('\n');
+
+        const fullCSV = `TRANSACTIONS\n${txCSV}\n\nRÉCAPIT. MEMBRES\n${memCSV}`;
+        const blob = new Blob(['\uFEFF' + fullCSV], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${activeClub.name}_export_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        notify('Export CSV téléchargé.');
+    };
+
+    // --- PRICE ALERTS ---
+    const handleAddAlert = () => {
+        const price = parseFloat(alertForm.price);
+        if (!alertForm.ticker.trim() || isNaN(price) || price <= 0) return;
+        const newAlert: PriceAlert = {
+            id: crypto.randomUUID(),
+            ticker: alertForm.ticker.trim().toUpperCase(),
+            targetPrice: price,
+            direction: alertForm.direction,
+            note: alertForm.note.trim(),
+            triggered: false,
+            createdAt: new Date().toISOString()
+        };
+        setPriceAlerts(prev => [newAlert, ...prev]);
+        setAlertForm({ ticker: '', price: '', direction: 'above', note: '' });
+        notify(`Alerte créée pour ${newAlert.ticker}.`);
+    };
+
+    const handleDeleteAlert = (id: string) => {
+        setPriceAlerts(prev => prev.filter(a => a.id !== id));
+    };
+
     // Request browser notification permission once user is in the app
     useEffect(() => {
-        if (activeClub && 'Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
+        if (activeClub && 'Notification' in window && window.Notification.permission === 'default') {
+            window.Notification.requestPermission();
         }
     }, [activeClub]);
 
@@ -1007,11 +1239,11 @@ export default function App() {
             const latest = messages[messages.length - 1];
             if (
                 'Notification' in window &&
-                Notification.permission === 'granted' &&
+                window.Notification.permission === 'granted' &&
                 document.hidden &&
                 latest.user_id !== session?.user?.id
             ) {
-                new Notification(`💬 ${activeClub?.name}`, {
+                new window.Notification(`💬 ${activeClub?.name}`, {
                     body: `${latest.user_name || 'Un membre'} : ${latest.content.slice(0, 80)}`,
                     icon: '/pwa-192x192.png',
                     tag: 'chat-message'
@@ -1032,6 +1264,83 @@ export default function App() {
         return () => clearTimeout(timeout);
     }, [tradeTicker]);
 
+
+    // Load price alerts from localStorage on mount
+    useEffect(() => {
+        const stored = localStorage.getItem('clubinvest_price_alerts');
+        if (stored) { try { setPriceAlerts(JSON.parse(stored)); } catch { /* ignore */ } }
+    }, []);
+
+    // Save price alerts to localStorage whenever they change
+    useEffect(() => {
+        localStorage.setItem('clubinvest_price_alerts', JSON.stringify(priceAlerts));
+    }, [priceAlerts]);
+
+    // Check price alerts against live prices
+    useEffect(() => {
+        if (!Object.keys(assetPrices).length) return;
+        setPriceAlerts(prev => prev.map(alert => {
+            if (alert.triggered) return alert;
+            const price = assetPrices[alert.ticker.toUpperCase()];
+            if (!price) return alert;
+            const hit = alert.direction === 'above' ? price >= alert.targetPrice : price <= alert.targetPrice;
+            if (hit) {
+                if ('Notification' in window && window.Notification.permission === 'granted') {
+                    new window.Notification(`🎯 Alerte prix : ${alert.ticker}`, {
+                        body: `${alert.ticker} à ${price.toFixed(2)} — cible ${alert.direction === 'above' ? '≥' : '≤'} ${alert.targetPrice}${alert.note ? ' · ' + alert.note : ''}`,
+                        icon: '/pwa-192x192.png',
+                        tag: `alert-${alert.ticker}`
+                    });
+                }
+                notify(`🎯 ${alert.ticker} a atteint ${price.toFixed(2)} !`);
+                return { ...alert, triggered: true };
+            }
+            return alert;
+        }));
+    }, [assetPrices]);
+
+    // Load proposals when club changes
+    useEffect(() => {
+        if (!activeClub) { setProposals([]); setMyVotes({}); return; }
+        const loadProposals = async () => {
+            const { data: props } = await supabase
+                .from('proposals')
+                .select('*')
+                .eq('club_id', activeClub.id)
+                .order('created_at', { ascending: false });
+            if (props) setProposals(props as Proposal[]);
+
+            if (!session) return;
+            const { data: votesData } = await supabase
+                .from('votes')
+                .select('proposal_id, vote')
+                .eq('user_id', session.user.id);
+            if (votesData) {
+                const map: Record<string, 'for' | 'against'> = {};
+                votesData.forEach(v => { map[v.proposal_id] = v.vote; });
+                setMyVotes(map);
+            }
+        };
+        loadProposals().catch(console.error);
+    }, [activeClub, session]);
+
+    // Load benchmark when symbol changes
+    useEffect(() => {
+        if (!benchmarkSymbol) { setBenchmarkData([]); return; }
+        setIsFetchingBenchmark(true);
+        fetchBenchmarkHistory(benchmarkSymbol)
+            .then(data => setBenchmarkData(data))
+            .catch(() => setBenchmarkData([]))
+            .finally(() => setIsFetchingBenchmark(false));
+    }, [benchmarkSymbol]);
+
+    // Load dividends when portfolio assets change
+    useEffect(() => {
+        if (!assets.length) { setDividends([]); return; }
+        Promise.all(assets.map(a => fetchDividendHistory(a.ticker)))
+            .then(results => setDividends(results.flat().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())))
+            .catch(() => {});
+    }, [assets]);
 
     // --- DERIVED STATE (after all hooks) ---
     const unreadCount = view !== 'chat' ? Math.max(0, messages.length - lastSeenMessageCount) : 0;
@@ -1096,6 +1405,7 @@ export default function App() {
         { id: 'members', label: 'Membres', shortLabel: 'Membres', icon: 'users' },
         { id: 'journal', label: 'Journal', shortLabel: 'Journal', icon: 'book' },
         { id: 'chat', label: 'Chat', shortLabel: 'Chat', icon: 'chat' },
+        { id: 'votes', label: 'Votes', shortLabel: 'Votes', icon: 'vote' },
         { id: 'guide', label: 'Guide & Fiscalité', shortLabel: 'Guide', icon: 'guide' },
     ];
 
@@ -1295,6 +1605,26 @@ export default function App() {
                                 {portfolioSummary.totalTaxLiability > 0 && (
                                     <span className="text-red-500 text-sm font-bold">Impôts provisionnés : {portfolioSummary.totalTaxLiability.toLocaleString('fr-FR', { style: 'currency', currency: activeClub.currency })}</span>
                                 )}
+                                {/* High Water Mark */}
+                                <span className="text-slate-400 dark:text-slate-500 text-sm">
+                                    HWM : <span className="font-bold text-slate-700 dark:text-slate-300">{highWaterMark.toFixed(2)} {activeClub.currency}</span>
+                                </span>
+                                {drawdown < 0 && (
+                                    <Badge type="negative">Drawdown {drawdown.toFixed(2)}%</Badge>
+                                )}
+                                {/* Benchmark comparison */}
+                                {benchmarkComparison && (
+                                    <span className="text-slate-400 dark:text-slate-500 text-sm">
+                                        vs <span className="font-bold">{benchmarkComparison.symbol}</span> :{' '}
+                                        <span className={benchmarkComparison.clubReturn >= benchmarkComparison.benchReturn ? 'text-green-600 dark:text-green-400 font-bold' : 'text-red-500 font-bold'}>
+                                            Club {benchmarkComparison.clubReturn >= 0 ? '+' : ''}{benchmarkComparison.clubReturn}%
+                                        </span>
+                                        {' / '}
+                                        <span className="font-bold text-slate-600 dark:text-slate-400">
+                                            {benchmarkComparison.symbol} {benchmarkComparison.benchReturn >= 0 ? '+' : ''}{benchmarkComparison.benchReturn}%
+                                        </span>
+                                    </span>
+                                )}
                             </div>
 
                             {/* AI Insight */}
@@ -1313,7 +1643,17 @@ export default function App() {
                                         <h3 className="font-bold text-lg text-slate-900 dark:text-white">Historique Quote-part</h3>
                                         <button onClick={() => setHelpTopic('nav')} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 w-4 h-4 rounded-full border flex items-center justify-center border-current text-[10px]">?</button>
                                     </div>
-                                    <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
+                                    <div className="flex items-center gap-3 flex-wrap">
+                                    <div className="flex gap-1">
+                                        {(['SPY', '^FCHI'] as const).map(sym => (
+                                            <button key={sym} onClick={() => setBenchmarkSymbol(benchmarkSymbol === sym ? null : sym)}
+                                                className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${benchmarkSymbol === sym ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-400'}`}>
+                                                {isFetchingBenchmark && benchmarkSymbol === sym ? '...' : `vs ${sym === '^FCHI' ? 'CAC 40' : 'S&P 500'}`}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
                                         {(['1J', '1S', '1M', '1A', 'MAX'] as TimeRange[]).map(r => (
                                             <button
                                                 key={r}
@@ -1363,6 +1703,7 @@ export default function App() {
 
                     {/* PORTFOLIO VIEW */}
                     {view === 'portfolio' && (
+                        <div className="space-y-6">
                         <Card className="p-0 overflow-hidden">
                             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
                                 <div>
@@ -1455,6 +1796,177 @@ export default function App() {
                                 </div>
                             </div>
                         </Card>
+
+                        {/* PRICE ALERTS */}
+                        <Card>
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2"><Icon name="bell" className="w-4 h-4" /> Alertes de Prix</h3>
+                            </div>
+                            <div className="grid md:grid-cols-4 gap-3 mb-4">
+                                <Input placeholder="Ticker (ex: AAPL)" value={alertForm.ticker} onChange={e => setAlertForm(f => ({ ...f, ticker: e.target.value.toUpperCase() }))} />
+                                <Input type="number" placeholder="Prix cible" value={alertForm.price} onChange={e => setAlertForm(f => ({ ...f, price: e.target.value }))} />
+                                <select value={alertForm.direction} onChange={e => setAlertForm(f => ({ ...f, direction: e.target.value as 'above' | 'below' }))}
+                                    className="bg-slate-50 dark:bg-slate-800 rounded-2xl px-4 text-slate-900 dark:text-white border-none outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white text-sm font-medium">
+                                    <option value="above">≥ au-dessus de</option>
+                                    <option value="below">≤ en-dessous de</option>
+                                </select>
+                                <Button onClick={handleAddAlert} disabled={!alertForm.ticker || !alertForm.price} variant="secondary">+ Alerte</Button>
+                            </div>
+                            {priceAlerts.length === 0 ? (
+                                <p className="text-sm text-slate-400 text-center py-4">Aucune alerte configurée.</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {priceAlerts.map(a => (
+                                        <div key={a.id} className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm ${a.triggered ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-900' : 'bg-slate-50 dark:bg-slate-800'}`}>
+                                            <div className="flex items-center gap-3">
+                                                <span className="font-mono font-bold text-slate-900 dark:text-white">{a.ticker}</span>
+                                                <span className="text-slate-500">{a.direction === 'above' ? '≥' : '≤'} {a.targetPrice}</span>
+                                                {a.note && <span className="text-slate-400 text-xs">{a.note}</span>}
+                                                {a.triggered && <Badge type="positive">Déclenché</Badge>}
+                                            </div>
+                                            <button onClick={() => handleDeleteAlert(a.id)} className="text-slate-400 hover:text-red-500 transition-colors">
+                                                <Icon name="x" className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </Card>
+
+                        {/* DIVIDENDS */}
+                        {dividends.length > 0 && (
+                            <Card>
+                                <h3 className="font-bold text-slate-900 dark:text-white mb-4">Historique Dividendes</h3>
+                                <div className="space-y-2">
+                                    {dividends.slice(0, 12).map((d, i) => (
+                                        <div key={i} className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800 last:border-0 text-sm">
+                                            <div className="flex items-center gap-3">
+                                                <span className="font-mono font-bold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">{d.ticker}</span>
+                                                <span className="text-slate-500">{new Date(d.date).toLocaleDateString('fr-FR')}</span>
+                                            </div>
+                                            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">+{d.amount.toFixed(4)} {d.currency}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-slate-400 mt-3">Données Yahoo Finance — dividendes par action versés par les sociétés détenues.</p>
+                            </Card>
+                        )}
+                        </div>
+                    )}
+
+                    {/* VOTES VIEW */}
+                    {view === 'votes' && (
+                        <div className="space-y-6">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Votes & Propositions</h2>
+                                    <p className="text-sm text-slate-500 mt-1">Proposez un trade, votez collectivement. Majorité simple requise.</p>
+                                </div>
+                                <Button onClick={() => { setShowProposalForm(v => !v); setProposalError(null); }}>
+                                    {showProposalForm ? 'Annuler' : '+ Proposer'}
+                                </Button>
+                            </div>
+
+                            {/* Proposal form */}
+                            {showProposalForm && (
+                                <Card>
+                                    <h3 className="font-bold text-slate-900 dark:text-white mb-4">Nouvelle proposition</h3>
+                                    {proposalError && <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 text-sm rounded-xl mb-4">{proposalError}</div>}
+                                    <div className="grid md:grid-cols-2 gap-4">
+                                        <div className="flex gap-2">
+                                            {(['BUY', 'SELL'] as const).map(t => (
+                                                <button key={t} onClick={() => setProposalForm(f => ({ ...f, type: t }))}
+                                                    className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all ${proposalForm.type === t ? (t === 'BUY' ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white') : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+                                                    {t === 'BUY' ? 'Acheter' : 'Vendre'}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <Input placeholder="Ticker (ex: NVDA)" value={proposalForm.ticker} onChange={e => setProposalForm(f => ({ ...f, ticker: e.target.value.toUpperCase() }))} />
+                                        <Input type="number" placeholder="Quantité" value={proposalForm.quantity} onChange={e => setProposalForm(f => ({ ...f, quantity: e.target.value }))} />
+                                        <Input type="number" placeholder="Prix estimé" value={proposalForm.price} onChange={e => setProposalForm(f => ({ ...f, price: e.target.value }))} />
+                                    </div>
+                                    <textarea
+                                        placeholder="Thèse d'investissement (obligatoire — pourquoi ce trade ?)"
+                                        value={proposalForm.thesis}
+                                        onChange={e => setProposalForm(f => ({ ...f, thesis: e.target.value }))}
+                                        className="w-full mt-4 bg-slate-50 dark:bg-slate-800 rounded-2xl px-5 py-4 text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-slate-900 dark:focus:ring-white outline-none text-sm resize-none h-24"
+                                    />
+                                    <div className="mt-4 flex justify-end">
+                                        <Button onClick={handleSubmitProposal} disabled={isSubmittingProposal}>
+                                            {isSubmittingProposal ? 'Envoi...' : 'Soumettre au vote'}
+                                        </Button>
+                                    </div>
+                                </Card>
+                            )}
+
+                            {/* Proposals list */}
+                            {proposals.length === 0 && !showProposalForm && (
+                                <div className="text-center py-16 text-slate-400">
+                                    <Icon name="vote" className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                                    <p className="font-medium">Aucune proposition en cours.</p>
+                                    <p className="text-sm mt-1">Soumettez un trade pour que les membres votent.</p>
+                                </div>
+                            )}
+                            {proposals.map(p => {
+                                const total = members.length;
+                                const majority = Math.floor(total / 2) + 1;
+                                const myVote = myVotes[p.id];
+                                const pct = total > 0 ? Math.round((p.votes_for / total) * 100) : 0;
+                                const statusColor = { pending: 'neutral', approved: 'positive', rejected: 'negative', executed: 'neutral' }[p.status] as 'positive' | 'negative' | 'neutral';
+                                const statusLabel = { pending: 'En cours', approved: 'Approuvé', rejected: 'Rejeté', executed: 'Exécuté' }[p.status];
+                                return (
+                                    <Card key={p.id} className={p.status === 'executed' ? 'opacity-60' : ''}>
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div className="flex items-center gap-3">
+                                                <span className={`font-mono font-black text-xl ${p.type === 'BUY' ? 'text-emerald-600' : 'text-red-500'}`}>{p.type}</span>
+                                                <span className="font-bold text-slate-900 dark:text-white text-lg">{p.quantity} × {p.ticker}</span>
+                                                <span className="text-slate-400 text-sm">@ {p.price} {p.currency}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Badge type={statusColor}>{statusLabel}</Badge>
+                                                {isAdmin && p.status === 'approved' && (
+                                                    <Button variant="success" className="text-xs px-3 py-1.5 h-auto" onClick={() => handleExecuteProposal(p)} disabled={isLoading}>
+                                                        Exécuter
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <p className="text-sm text-slate-600 dark:text-slate-300 mb-4 italic">"{p.thesis}"</p>
+                                        <div className="text-xs text-slate-400 mb-3">
+                                            Proposé par <span className="font-semibold text-slate-600 dark:text-slate-300">{p.proposer_name || 'un membre'}</span>
+                                            {' · '}Expire le {new Date(p.expires_at).toLocaleDateString('fr-FR')}
+                                            {' · '}{majority} vote{majority > 1 ? 's' : ''} pour / {total} membres
+                                        </div>
+                                        {/* Vote progress bar */}
+                                        <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-3">
+                                            <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <div className="flex gap-4 text-sm">
+                                                <span className="text-emerald-600 font-bold">{p.votes_for} Pour</span>
+                                                <span className="text-red-500 font-bold">{p.votes_against} Contre</span>
+                                                <span className="text-slate-400">{total - p.votes_for - p.votes_against} abstentions</span>
+                                            </div>
+                                            {p.status === 'pending' && !myVote && (
+                                                <div className="flex gap-2">
+                                                    <Button variant="success" className="text-xs px-4 py-2 h-auto" onClick={() => handleVote(p.id, 'for')}>
+                                                        <Icon name="check" className="w-3 h-3" /> Pour
+                                                    </Button>
+                                                    <Button variant="danger" className="text-xs px-4 py-2 h-auto" onClick={() => handleVote(p.id, 'against')}>
+                                                        <Icon name="x" className="w-3 h-3" /> Contre
+                                                    </Button>
+                                                </div>
+                                            )}
+                                            {myVote && (
+                                                <Badge type={myVote === 'for' ? 'positive' : 'negative'}>
+                                                    Voté {myVote === 'for' ? 'Pour' : 'Contre'}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    </Card>
+                                );
+                            })}
+                        </div>
                     )}
 
                     {/* MEMBERS VIEW */}
@@ -1492,7 +2004,7 @@ export default function App() {
                                 </div>
                                 {/* Desktop */}
                                 <div className="hidden md:block">
-                                    <Table headers={['Membre', 'Rôle', 'Parts', 'Investi', 'Valeur Actuelle', 'P&L', '']}>
+                                    <Table headers={['Membre', 'Rôle', 'Parts', 'Investi', 'Valeur Actuelle', 'P&L', 'Cotisation', '']}>
                                         {members.map(m => {
                                             const val = memberValues[m.id] || 0;
                                             const pl = val - m.total_invested_fiat;
@@ -1516,6 +2028,19 @@ export default function App() {
                                                         </span>
                                                     </TableCell>
                                                     <TableCell>
+                                                        {(() => {
+                                                            const last = memberLastDeposit[m.id];
+                                                            const daysSince = last ? Math.floor((Date.now() - new Date(last).getTime()) / 86400000) : null;
+                                                            const overdue = daysSince === null || daysSince > 30;
+                                                            return (
+                                                                <span className={`text-xs font-medium ${overdue ? 'text-amber-500' : 'text-slate-400'}`}>
+                                                                    {last ? `${daysSince}j` : 'Jamais'}
+                                                                    {overdue && <span title="Pas de dépôt depuis plus de 30 jours"> ⚠️</span>}
+                                                                </span>
+                                                            );
+                                                        })()}
+                                                    </TableCell>
+                                                    <TableCell>
                                                         {isAdmin && m.user_id !== session?.user.id && (
                                                             <button onClick={() => { setMemberToKick(m); setModal({ type: 'kickConfirm' }); }} className="text-red-500 hover:bg-red-900/20 p-1.5 rounded-full transition-colors" title="Retirer du club">✕</button>
                                                         )}
@@ -1532,9 +2057,14 @@ export default function App() {
                     {/* JOURNAL VIEW */}
                     {view === 'journal' && (
                         <Card className="p-0 overflow-hidden">
-                            <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                                <h3 className="font-bold text-slate-900 dark:text-white">Journal des opérations</h3>
-                                <p className="text-xs text-slate-500 mt-0.5">{transactions.length} opération{transactions.length > 1 ? 's' : ''}</p>
+                            <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
+                                <div>
+                                    <h3 className="font-bold text-slate-900 dark:text-white">Journal des opérations</h3>
+                                    <p className="text-xs text-slate-500 mt-0.5">{transactions.length} opération{transactions.length > 1 ? 's' : ''}</p>
+                                </div>
+                                <Button variant="outline" className="text-xs px-3 py-2 h-auto gap-1.5" onClick={handleExportCSV} disabled={!transactions.length}>
+                                    <Icon name="download" className="w-3.5 h-3.5" /> Export CSV
+                                </Button>
                             </div>
                             {transactions.length === 0 && (
                                 <div className="p-12 text-center text-slate-400 text-sm">Aucune opération enregistrée.</div>
@@ -1840,12 +2370,12 @@ export default function App() {
                         const pru = m.shares_owned > 0 ? m.total_invested_fiat / m.shares_owned : 0;
                         const capital = shares * pru;
                         const gain = amount - capital;
-                        const tax = gain > 0 ? gain * 0.314 : 0;
+                        const tax = gain > 0 ? gain * 0.30 : 0;
                         return (
                             <div className="text-xs text-slate-500 space-y-1 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
                                 <div>Parts brûlées : <span className="font-mono font-bold">{shares.toFixed(4)}</span></div>
                                 <div>Plus-value estimée : <span className={`font-mono font-bold ${gain >= 0 ? 'text-green-600' : 'text-red-600'}`}>{gain.toFixed(2)} {activeClub.currency}</span></div>
-                                {tax > 0 && <div>Impôt estimé (31,4% PFU) : <span className="font-mono font-bold text-red-500">{tax.toFixed(2)} {activeClub.currency}</span></div>}
+                                {tax > 0 && <div>Impôt estimé (30% PFU) : <span className="font-mono font-bold text-red-500">{tax.toFixed(2)} {activeClub.currency}</span></div>}
                             </div>
                         );
                     })()}

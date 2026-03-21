@@ -17,7 +17,7 @@ export const Logo: React.FC<{ className?: string, onClick?: () => void }> = ({ c
   </div>
 );
 
-export const Icon: React.FC<{ name: 'dashboard' | 'pie' | 'users' | 'book' | 'settings' | 'menu' | 'close' | 'arrowRight' | 'bank' | 'moon' | 'sun' | 'plus' | 'minus' | 'logout' | 'chat' | 'guide'; className?: string }> = ({ name, className = '' }) => {
+export const Icon: React.FC<{ name: 'dashboard' | 'pie' | 'users' | 'book' | 'settings' | 'menu' | 'close' | 'arrowRight' | 'bank' | 'moon' | 'sun' | 'plus' | 'minus' | 'logout' | 'chat' | 'guide' | 'vote' | 'bell' | 'download' | 'check' | 'x'; className?: string }> = ({ name, className = '' }) => {
     const icons = {
         dashboard: <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10" />,
         pie: <path d="M21.21 15.89A10 10 0 1 1 8 2.83M22 12A10 10 0 0 0 12 2v10z" />,
@@ -34,7 +34,12 @@ export const Icon: React.FC<{ name: 'dashboard' | 'pie' | 'users' | 'book' | 'se
         plus: <path d="M12 5v14M5 12h14" />,
         minus: <path d="M5 12h14" />,
         logout: <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />,
-        guide: <><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></>
+        guide: <><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></>,
+        vote: <><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></>,
+        bell: <><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></>,
+        download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></>,
+        check: <path d="M20 6L9 17l-5-5"/>,
+        x: <path d="M18 6L6 18M6 6l12 12"/>,
 
     };
 

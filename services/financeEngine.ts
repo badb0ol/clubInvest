@@ -1,5 +1,5 @@
 
-import { Asset, Club, Currency, PortfolioSummary } from '../types';
+import { Asset, Club, Currency, DividendEntry, PortfolioSummary } from '../types';
 
 // API Configuration
 const API_KEY = import.meta.env.VITE_TWELVE_DATA_API_KEY; 
@@ -50,6 +50,52 @@ export const fetchAssetPrice = async (ticker: string): Promise<number> => {
   } catch (error) {
       console.error("[FinanceEngine] Network Error:", error);
       return 0;
+  }
+};
+
+/**
+ * Fetch historical benchmark data (normalized to 100 at start)
+ * Returns [{date, value}] where value is % performance from start
+ */
+export const fetchBenchmarkHistory = async (symbol: string): Promise<{ date: string; value: number }[]> => {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1mo&range=2y`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const json = await res.json();
+    const timestamps: number[] = json?.chart?.result?.[0]?.timestamp || [];
+    const closes: number[] = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
+    if (!timestamps.length || !closes.length) return [];
+    const base = closes.find(c => c != null) || closes[0];
+    if (!base) return [];
+    return timestamps.map((ts, i) => ({
+      date: new Date(ts * 1000).toISOString().split('T')[0],
+      value: closes[i] != null ? parseFloat(((closes[i] / base) * 100).toFixed(2)) : NaN
+    })).filter(d => !isNaN(d.value));
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Fetch recent dividend history for a ticker via Yahoo Finance
+ */
+export const fetchDividendHistory = async (ticker: string): Promise<DividendEntry[]> => {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1mo&range=2y&events=div`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const json = await res.json();
+    const currency = json?.chart?.result?.[0]?.meta?.currency || 'USD';
+    const divEvents = json?.chart?.result?.[0]?.events?.dividends || {};
+    return Object.values(divEvents).map((d: any) => ({
+      ticker: ticker.toUpperCase(),
+      amount: parseFloat(d.amount?.toFixed(4) || '0'),
+      date: new Date(d.date * 1000).toISOString().split('T')[0],
+      currency
+    })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  } catch {
+    return [];
   }
 };
 

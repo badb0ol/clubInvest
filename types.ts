@@ -76,3 +76,38 @@ export interface PortfolioSummary {
   totalTaxLiability: number;
   cashBalance: number;
 }
+
+export interface Proposal {
+  id: string;
+  club_id: string;
+  proposer_id: string;
+  proposer_name?: string;
+  type: 'BUY' | 'SELL';
+  ticker: string;
+  quantity: number;
+  price: number;
+  currency: Currency;
+  thesis: string;
+  status: 'pending' | 'approved' | 'rejected' | 'executed';
+  votes_for: number;
+  votes_against: number;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface PriceAlert {
+  id: string;
+  ticker: string;
+  targetPrice: number;
+  direction: 'above' | 'below';
+  note: string;
+  triggered: boolean;
+  createdAt: string;
+}
+
+export interface DividendEntry {
+  ticker: string;
+  amount: number;
+  date: string;
+  currency: string;
+}
