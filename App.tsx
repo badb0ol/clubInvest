@@ -462,7 +462,7 @@ const OnboardingScreen: React.FC<{ user: any; onClubJoined: () => void }> = ({ u
                 .select().single();
             if (ce) throw ce;
             await supabase.from('club_members').insert({
-                club_id: club.id, user_id: user.id, role: 'admin', shares_owned: 0, total_invested_fiat: 0
+                club_id: club.id, user_id: user.id, role: 'admin', is_creator: true, shares_owned: 0, total_invested_fiat: 0
             });
             onClubJoined();
         } catch (e: any) {
@@ -895,6 +895,7 @@ export default function App() {
     }, [activeClub, assets, assetPrices]);
 
     const isAdmin = currentUserMember?.role === 'admin';
+    const isCreator = currentUserMember?.is_creator === true;
 
     const filteredHistory = useMemo(() => {
         if (!activeClub) return [];
@@ -1271,6 +1272,22 @@ export default function App() {
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handlePromoteToAdmin = async (member: Member) => {
+        if (!isCreator) return;
+        const { error } = await supabase.from('club_members').update({ role: 'admin' }).eq('id', member.id);
+        if (error) { notify("Erreur : " + error.message, 'error'); return; }
+        setMembers(prev => prev.map(m => m.id === member.id ? { ...m, role: 'admin' } : m));
+        notify(`${member.full_name} est maintenant admin.`);
+    };
+
+    const handleDemoteToMember = async (member: Member) => {
+        if (!isCreator) return;
+        const { error } = await supabase.from('club_members').update({ role: 'member' }).eq('id', member.id);
+        if (error) { notify("Erreur : " + error.message, 'error'); return; }
+        setMembers(prev => prev.map(m => m.id === member.id ? { ...m, role: 'member' } : m));
+        notify(`${member.full_name} est maintenant membre.`);
     };
 
     const handleResetClub = async () => {
@@ -2184,7 +2201,7 @@ export default function App() {
                         </div>
                         <div className="min-w-0 text-left">
                             <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">{currentUserMember?.full_name}</div>
-                            <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{currentUserMember?.role === 'admin' ? 'Admin' : 'Membre'} · Mon profil</div>
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{isCreator ? 'Créateur' : currentUserMember?.role === 'admin' ? 'Admin' : 'Membre'} · Mon profil</div>
                         </div>
                     </button>
                     <button onClick={() => setDarkMode(!darkMode)} className="flex items-center gap-3 text-sm font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors px-3">
@@ -2887,7 +2904,17 @@ export default function App() {
                                                     <div className="text-sm font-bold text-slate-900 dark:text-white">{(memberValues[m.id] || 0).toFixed(2)} {activeClub.currency}</div>
                                                     <div className="text-xs text-slate-500">{m.shares_owned.toFixed(2)} parts</div>
                                                 </div>
-                                                {isAdmin && m.user_id !== session?.user.id && (
+                                                {isCreator && m.user_id !== session?.user.id && !m.is_creator && (
+                                                    <div className="flex flex-col gap-1">
+                                                        {m.role === 'member' ? (
+                                                            <button onClick={() => handlePromoteToAdmin(m)} className="px-2 py-1 text-[10px] font-bold bg-zinc-100 dark:bg-zinc-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-700 dark:hover:text-emerald-400 rounded-lg transition-colors">Admin</button>
+                                                        ) : (
+                                                            <button onClick={() => handleDemoteToMember(m)} className="px-2 py-1 text-[10px] font-bold bg-zinc-100 dark:bg-zinc-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:text-amber-700 dark:hover:text-amber-400 rounded-lg transition-colors">Membre</button>
+                                                        )}
+                                                        <button onClick={() => { setMemberToKick(m); setModal({ type: 'kickConfirm' }); }} className="p-1.5 text-red-500 bg-red-50 dark:bg-red-900/20 rounded-full active:scale-90 transition-transform text-xs">✕</button>
+                                                    </div>
+                                                )}
+                                                {isAdmin && !isCreator && m.user_id !== session?.user.id && (
                                                     <button onClick={() => { setMemberToKick(m); setModal({ type: 'kickConfirm' }); }} className="p-2 text-red-500 bg-red-50 dark:bg-red-900/20 rounded-full active:scale-90 transition-transform">✕</button>
                                                 )}
                                             </div>
@@ -2910,7 +2937,9 @@ export default function App() {
                                                             <span className="font-medium">{m.full_name || 'Membre'}</span>
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell><Badge>{m.role}</Badge></TableCell>
+                                                    <TableCell>
+                                                        {m.is_creator ? <Badge type="positive">Créateur</Badge> : <Badge type={m.role === 'admin' ? 'neutral' : 'neutral'}>{m.role}</Badge>}
+                                                    </TableCell>
                                                     <TableCell className="font-mono">{m.shares_owned.toFixed(4)}</TableCell>
                                                     <TableCell className="font-mono">{m.total_invested_fiat.toFixed(2)} {activeClub.currency}</TableCell>
                                                     <TableCell className="font-mono font-bold">{val.toFixed(2)} {activeClub.currency}</TableCell>
@@ -2933,8 +2962,17 @@ export default function App() {
                                                         })()}
                                                     </TableCell>
                                                     <TableCell>
-                                                        {isAdmin && m.user_id !== session?.user.id && (
-                                                            <button onClick={() => { setMemberToKick(m); setModal({ type: 'kickConfirm' }); }} className="text-red-500 hover:bg-red-900/20 p-1.5 rounded-full transition-colors" title="Retirer du club">✕</button>
+                                                        {m.user_id !== session?.user.id && !m.is_creator && (
+                                                            <div className="flex items-center gap-1">
+                                                                {isCreator && (m.role === 'member' ? (
+                                                                    <button onClick={() => handlePromoteToAdmin(m)} className="px-2 py-1 text-[10px] font-bold bg-zinc-100 dark:bg-zinc-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-700 dark:hover:text-emerald-400 rounded-lg transition-colors whitespace-nowrap" title="Promouvoir admin">↑ Admin</button>
+                                                                ) : (
+                                                                    <button onClick={() => handleDemoteToMember(m)} className="px-2 py-1 text-[10px] font-bold bg-zinc-100 dark:bg-zinc-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:text-amber-700 dark:hover:text-amber-400 rounded-lg transition-colors whitespace-nowrap" title="Rétrograder membre">↓ Membre</button>
+                                                                ))}
+                                                                {isAdmin && (
+                                                                    <button onClick={() => { setMemberToKick(m); setModal({ type: 'kickConfirm' }); }} className="text-red-500 hover:bg-red-900/20 p-1.5 rounded-full transition-colors" title="Retirer du club">✕</button>
+                                                                )}
+                                                            </div>
                                                         )}
                                                     </TableCell>
                                                 </TableRow>
@@ -3175,8 +3213,8 @@ export default function App() {
                                     <div>
                                         <div className="font-bold text-lg text-slate-900 dark:text-white">{currentUserMember?.full_name}</div>
                                         <div className="text-xs text-slate-400 font-mono">{session?.user.email}</div>
-                                        <Badge type={currentUserMember?.role === 'admin' ? 'positive' : 'neutral'} className="mt-1">
-                                            {currentUserMember?.role === 'admin' ? 'Admin' : 'Membre'}
+                                        <Badge type={isCreator ? 'positive' : currentUserMember?.role === 'admin' ? 'neutral' : 'neutral'} className="mt-1">
+                                            {isCreator ? 'Créateur' : currentUserMember?.role === 'admin' ? 'Admin' : 'Membre'}
                                         </Badge>
                                     </div>
                                 </div>

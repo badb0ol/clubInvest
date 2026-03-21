@@ -22,6 +22,7 @@ export interface Member {
   club_id: string;
   full_name: string;
   role: Role;
+  is_creator: boolean;
   shares_owned: number;
   total_invested_fiat: number;
   joined_at: string;
