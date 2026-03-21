@@ -19,7 +19,7 @@ const AVAILABLE_BANKS = [
 
 type TimeRange = '1J' | '1S' | '1M' | '1A' | 'MAX';
 type ViewState = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'portfolio' | 'members' | 'journal' | 'chat' | 'guide' | 'admin';
-type ModalType = 'addMember' | 'deposit' | 'trade' | 'connectBank' | 'withdraw' | 'kickConfirm' | null;
+type ModalType = 'addMember' | 'deposit' | 'trade' | 'connectBank' | 'withdraw' | 'kickConfirm' | 'resetClub' | null;
 
 // --- INLINE NOTIFICATION ---
 const Notification: React.FC<{ message: string; type: 'success' | 'error'; onClose: () => void }> = ({ message, type, onClose }) => (
@@ -438,6 +438,9 @@ export default function App() {
     const [isFetchingTradePrice, setIsFetchingTradePrice] = useState(false);
     const [freezeSuccess, setFreezeSuccess] = useState(false);
     const [isConnectingBank, setIsConnectingBank] = useState(false);
+    const [resetPassword, setResetPassword] = useState('');
+    const [resetError, setResetError] = useState<string | null>(null);
+    const [isResetting, setIsResetting] = useState(false);
 
     // Chat state
     const [messages, setMessages] = useState<Message[]>([]);
@@ -932,6 +935,47 @@ export default function App() {
         }
     };
 
+    const handleResetClub = async () => {
+        if (!activeClub || !session) return;
+        setIsResetting(true);
+        setResetError(null);
+        try {
+            // Re-authenticate to verify password
+            const { error: authErr } = await supabase.auth.signInWithPassword({
+                email: session.user.email!,
+                password: resetPassword
+            });
+            if (authErr) throw new Error('Mot de passe incorrect.');
+
+            // Wipe financial records
+            await supabase.from('transactions').delete().eq('club_id', activeClub.id);
+            await supabase.from('assets').delete().eq('club_id', activeClub.id);
+            await supabase.from('nav_history').delete().eq('club_id', activeClub.id);
+
+            // Reset club financials
+            await supabase.from('clubs').update({
+                cash_balance: 0,
+                total_shares: 0,
+                tax_liability: 0
+            }).eq('id', activeClub.id);
+
+            // Reset all members' share counts
+            await supabase.from('club_members').update({
+                shares_owned: 0,
+                total_invested_fiat: 0
+            }).eq('club_id', activeClub.id);
+
+            setResetPassword('');
+            closeModal();
+            await loadClubData(activeClub.id);
+            notify('Club réinitialisé. Les membres sont conservés.');
+        } catch (e: any) {
+            setResetError(e.message);
+        } finally {
+            setIsResetting(false);
+        }
+    };
+
     const handleConnectBank = (name: string) => {
         setIsConnectingBank(true);
         setTimeout(async () => {
@@ -945,12 +989,34 @@ export default function App() {
         }, 1200);
     };
 
-    // Auto-scroll chat to bottom on new messages + track unread
+    // Request browser notification permission once user is in the app
+    useEffect(() => {
+        if (activeClub && 'Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    }, [activeClub]);
+
+    // Auto-scroll chat + track unread + push browser notification for new messages
     useEffect(() => {
         if (view === 'chat') {
             const el = document.getElementById('chat-messages');
             if (el) el.scrollTop = el.scrollHeight;
             setLastSeenMessageCount(messages.length);
+        } else if (messages.length > 0) {
+            // Show browser notification for new messages when not on chat view
+            const latest = messages[messages.length - 1];
+            if (
+                'Notification' in window &&
+                Notification.permission === 'granted' &&
+                document.hidden &&
+                latest.user_id !== session?.user?.id
+            ) {
+                new Notification(`💬 ${activeClub?.name}`, {
+                    body: `${latest.user_name || 'Un membre'} : ${latest.content.slice(0, 80)}`,
+                    icon: '/pwa-192x192.png',
+                    tag: 'chat-message'
+                });
+            }
         }
     }, [messages, view]);
 
@@ -1662,6 +1728,15 @@ export default function App() {
                                     {isLoading ? 'Enregistrement...' : freezeSuccess ? '✓ Figée !' : 'Figer la Quote-part'}
                                 </Button>
                             </Card>
+                            <Card className="border border-red-100 dark:border-red-900/40">
+                                <h3 className="font-bold mb-2 text-red-600 dark:text-red-400">Zone dangereuse</h3>
+                                <p className="text-sm text-slate-500 mb-4">
+                                    Réinitialise toutes les données financières du club (dépôts, actifs, historique NAV, parts). Les membres restent dans le club. Action irréversible.
+                                </p>
+                                <Button variant="danger" onClick={() => { setResetError(null); setResetPassword(''); setModal({ type: 'resetClub' }); }}>
+                                    Réinitialiser le club
+                                </Button>
+                            </Card>
                         </div>
                     )}
                 </div>
@@ -1765,12 +1840,12 @@ export default function App() {
                         const pru = m.shares_owned > 0 ? m.total_invested_fiat / m.shares_owned : 0;
                         const capital = shares * pru;
                         const gain = amount - capital;
-                        const tax = gain > 0 ? gain * 0.30 : 0;
+                        const tax = gain > 0 ? gain * 0.314 : 0;
                         return (
                             <div className="text-xs text-slate-500 space-y-1 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
                                 <div>Parts brûlées : <span className="font-mono font-bold">{shares.toFixed(4)}</span></div>
                                 <div>Plus-value estimée : <span className={`font-mono font-bold ${gain >= 0 ? 'text-green-600' : 'text-red-600'}`}>{gain.toFixed(2)} {activeClub.currency}</span></div>
-                                {tax > 0 && <div>Impôt estimé (30% PFU) : <span className="font-mono font-bold text-red-500">{tax.toFixed(2)} {activeClub.currency}</span></div>}
+                                {tax > 0 && <div>Impôt estimé (31,4% PFU) : <span className="font-mono font-bold text-red-500">{tax.toFixed(2)} {activeClub.currency}</span></div>}
                             </div>
                         );
                     })()}
@@ -1888,6 +1963,38 @@ export default function App() {
                         <Button variant="outline" className="flex-1" onClick={closeModal}>Annuler</Button>
                         <Button variant="danger" className="flex-1" onClick={handleKickMember} disabled={isLoading}>
                             {isLoading ? 'Retrait...' : 'Confirmer'}
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* RESET CLUB */}
+            <Modal isOpen={modal.type === 'resetClub'} onClose={closeModal} title="Réinitialiser le Club">
+                <div className="space-y-4">
+                    <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-2xl border border-red-100 dark:border-red-900/40">
+                        <p className="text-sm font-semibold text-red-700 dark:text-red-400 mb-2">Cette action est irréversible.</p>
+                        <ul className="text-xs text-red-600 dark:text-red-400 space-y-1 list-disc list-inside">
+                            <li>Tous les dépôts et retraits sont effacés</li>
+                            <li>Tous les actifs et ordres sont supprimés</li>
+                            <li>L'historique de NAV est effacé</li>
+                            <li>Les parts de chaque membre sont remises à 0</li>
+                            <li>Les membres restent dans le club</li>
+                        </ul>
+                    </div>
+                    {resetError && <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-xl">{resetError}</div>}
+                    <div>
+                        <p className="text-xs text-slate-500 mb-2 font-semibold">Entrez votre mot de passe pour confirmer</p>
+                        <Input
+                            type="password"
+                            placeholder="Mot de passe"
+                            value={resetPassword}
+                            onChange={e => setResetPassword(e.target.value)}
+                        />
+                    </div>
+                    <div className="flex gap-3">
+                        <Button variant="outline" className="flex-1" onClick={closeModal}>Annuler</Button>
+                        <Button variant="danger" className="flex-1" onClick={handleResetClub} disabled={isResetting || !resetPassword}>
+                            {isResetting ? 'Réinitialisation...' : 'Confirmer la réinitialisation'}
                         </Button>
                     </div>
                 </div>
