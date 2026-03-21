@@ -30,6 +30,121 @@ const Notification: React.FC<{ message: string; type: 'success' | 'error'; onClo
     </div>
 );
 
+// --- PWA INSTALL BANNER ---
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as any).MSStream;
+const isInStandaloneMode = () => ('standalone' in window.navigator && (window.navigator as any).standalone) || window.matchMedia('(display-mode: standalone)').matches;
+
+const PWAInstallBanner: React.FC = () => {
+    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+    const [showIOSGuide, setShowIOSGuide] = useState(false);
+    const [dismissed, setDismissed] = useState(() => localStorage.getItem('pwa-banner-dismissed') === '1');
+
+    useEffect(() => {
+        if (isInStandaloneMode() || dismissed) return;
+
+        const handler = (e: Event) => {
+            e.preventDefault();
+            setDeferredPrompt(e);
+        };
+        window.addEventListener('beforeinstallprompt', handler as any);
+
+        // Show iOS guide automatically after a short delay if on iOS
+        if (isIOS() && !isInStandaloneMode()) {
+            const t = setTimeout(() => setShowIOSGuide(true), 3000);
+            return () => { clearTimeout(t); window.removeEventListener('beforeinstallprompt', handler as any); };
+        }
+        return () => window.removeEventListener('beforeinstallprompt', handler as any);
+    }, [dismissed]);
+
+    const dismiss = () => {
+        localStorage.setItem('pwa-banner-dismissed', '1');
+        setDismissed(true);
+        setShowIOSGuide(false);
+        setDeferredPrompt(null);
+    };
+
+    const handleAndroidInstall = async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') dismiss();
+        setDeferredPrompt(null);
+    };
+
+    if (dismissed || isInStandaloneMode()) return null;
+
+    // Android / Chrome: native prompt available
+    if (deferredPrompt) {
+        return (
+            <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[90] w-[calc(100%-2rem)] max-w-sm">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-4 flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-300">
+                    <div className="w-12 h-12 bg-slate-900 dark:bg-white rounded-2xl flex items-center justify-center shrink-0">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path d="M3 21H21" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                            <path d="M3 16L9 10L13 14L21 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M21 6V10M21 6H17" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">Installer ClubInvest</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Accès rapide depuis votre écran d'accueil</p>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        <button onClick={handleAndroidInstall} className="px-3 py-1.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold rounded-xl">
+                            Installer
+                        </button>
+                        <button onClick={dismiss} className="px-3 py-1.5 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800">
+                            Plus tard
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // iOS Safari: manual guide
+    if (showIOSGuide) {
+        return (
+            <div className="fixed inset-0 z-[90] flex items-end">
+                <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={dismiss} />
+                <div className="relative w-full bg-white dark:bg-slate-900 rounded-t-3xl p-6 pb-10 animate-in slide-in-from-bottom duration-300 border-t border-slate-200 dark:border-slate-700">
+                    <div className="w-10 h-1 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-5" />
+                    <div className="flex items-center gap-3 mb-5">
+                        <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center shrink-0">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <path d="M3 21H21" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                                <path d="M3 16L9 10L13 14L21 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M21 6V10M21 6H17" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <p className="font-bold text-slate-900 dark:text-white">Installer ClubInvest</p>
+                            <p className="text-xs text-slate-500">Ajoutez l'app à votre écran d'accueil</p>
+                        </div>
+                    </div>
+                    <div className="space-y-3">
+                        {[
+                            { step: '1', icon: '⬆️', text: 'Appuyez sur le bouton Partager en bas de Safari' },
+                            { step: '2', icon: '➕', text: 'Faites défiler et appuyez sur "Sur l\'écran d\'accueil"' },
+                            { step: '3', icon: '✅', text: 'Appuyez sur "Ajouter" en haut à droite' },
+                        ].map(s => (
+                            <div key={s.step} className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl">
+                                <span className="text-xl leading-none">{s.icon}</span>
+                                <p className="text-sm text-slate-700 dark:text-slate-300">{s.text}</p>
+                            </div>
+                        ))}
+                    </div>
+                    <button onClick={dismiss} className="mt-5 w-full py-3 text-sm font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors">
+                        Fermer
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    return null;
+};
+
 // --- GUIDE VIEW ---
 const GUIDE_SECTIONS = [
     {
@@ -1783,6 +1898,9 @@ export default function App() {
             {notification && (
                 <Notification message={notification.message} type={notification.type} onClose={() => setNotification(null)} />
             )}
+
+            {/* PWA INSTALL BANNER */}
+            <PWAInstallBanner />
 
             {/* NOTIFICATION PANEL */}
             {showNotifications && (
