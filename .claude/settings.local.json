@@ -68,7 +68,8 @@
       "Bash(grep -h \"create table\" supabase/migrations/*.sql)",
       "Bash(tr -d '\\(')",
       "Bash(grep -h \"create table if not exists\" supabase/migrations/*.sql)",
-      "Bash(grep -rh \"create table\" supabase/migrations/*.sql)"
+      "Bash(grep -rh \"create table\" supabase/migrations/*.sql)",
+      "Bash(xargs grep:*)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Clement VENOT\\.claude\\projects\\c--Users-Clement-VENOT-Documents-GitHub-clubInvest\\memory"

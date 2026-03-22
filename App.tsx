@@ -332,13 +332,10 @@ const AuthScreen: React.FC<{ onAuthSuccess: () => void; onBack: () => void }> = 
             if (isLogin) {
                 let emailToUse = loginIdentifier.trim();
                 if (!emailToUse.includes('@')) {
-                    const { data: profile, error: pError } = await supabase
-                        .from('profiles')
-                        .select('email')
-                        .ilike('full_name', emailToUse)
-                        .maybeSingle();
-                    if (pError || !profile) throw new Error("Pseudo introuvable.");
-                    emailToUse = profile.email;
+                    const { data: foundEmail, error: pError } = await supabase
+                        .rpc('get_email_by_username', { p_username: emailToUse });
+                    if (pError || !foundEmail) throw new Error("Pseudo introuvable.");
+                    emailToUse = foundEmail;
                 }
                 const { error } = await supabase.auth.signInWithPassword({ email: emailToUse, password });
                 if (error) throw error;
